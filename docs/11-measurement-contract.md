@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-11
 title: Measurement Contract
-version: 0.2.0
+version: 0.2.1
 status: PROVISIONAL
 approved_by: PENDING
 ---
@@ -9,6 +9,20 @@ approved_by: PENDING
 # Contrato de medición
 
 ## MET-APPEND-READY-E2E
+
+### Estado de implementación
+
+`BLOCKED`
+
+La implementación queda bloqueada hasta la aprobación de
+`ADR-003-append-measurement-boundary.md`.
+
+El ADR debe resolver:
+
+- posición del establecimiento de la transacción;
+- final temporal ante fallo;
+- inclusión o exclusión de rollback y limpieza;
+- campos estructurados para operaciones fallidas.
 
 ### Propósito
 

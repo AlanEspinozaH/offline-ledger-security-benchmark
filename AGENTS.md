@@ -107,6 +107,8 @@ Cada cambio debe indicar los identificadores aplicables cuando existan:
 - `TST-*`: prueba;
 - `ADR-*`: decisión registrada.
 
+Los registros `ADR-*` se almacenan en `docs/decisions/`.
+
 ## Criterios de finalización
 
 ### Tarea documental

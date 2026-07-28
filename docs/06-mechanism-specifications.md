@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-06
 title: Mechanism Specifications
-version: 0.2.0
+version: 0.2.1
 status: PROVISIONAL
 approved_by: PENDING
 ---
@@ -14,16 +14,26 @@ approved_by: PENDING
 
 PROVISIONAL
 
+### Estado de implementación
+
+`BLOCKED`
+
+La implementación queda bloqueada hasta resolver y aprobar:
+
+- `ADR-001`: codificación autenticada y semántica de secuencia;
+- `ADR-002`: alcance, identificación y provisión de claves.
+
 ### Primitiva
 
 HMAC-SHA-256.
 
 ### Entrada lógica
 
+- `schema_version`;
+- `mechanism_version`;
 - `ledger_id`;
 - `sequence`;
 - `canonical_payload`;
-- `mechanism_version`;
 - clave secreta asociada al ledger.
 
 ### Mensaje autenticado
@@ -70,7 +80,7 @@ Autenticidad individual del mensaje autenticado frente a un adversario que no po
 
 ### Gestión de claves
 
-Estado: pendiente de decisión.
+Estado de implementación: `BLOCKED` por `ADR-002`.
 
 Deben definirse como mínimo:
 

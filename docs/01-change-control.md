@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-01
 title: Change Control
-version: 0.1.0
+version: 0.1.1
 status: DRAFT
 approved_by: PENDING
 approval_date: PENDING
@@ -96,3 +96,14 @@ Cuando encuentre una ambigüedad debe:
 2. registrar la ambigüedad;
 3. proponer alternativas;
 4. no seleccionar una alternativa silenciosamente.
+
+## 8. Registro de decisiones
+
+Las decisiones normativas relevantes se registran en `docs/decisions/`
+mediante identificadores `ADR-*`.
+
+Los agentes pueden proponer alternativas y recomendaciones, pero únicamente
+el investigador puede cambiar una decisión a estado `APPROVED`.
+
+Un ADR en estado `DRAFT` o `PROVISIONAL` no autoriza una implementación
+definitiva.
