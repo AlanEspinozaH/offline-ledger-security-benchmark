@@ -1,5 +1,6 @@
 trace_id,rq_id,hypothesis_id,requirement_id,mechanism_id,threat_id,attack_id,metric_id,data_field_id,test_id,decision_id,status,notes
 TRC-001,RQ-01,,,MEC-A1,THR-P1,,,,,ADR-001,DRAFT,Cadena autenticada y ataques pendientes
+TRC-005,RQ-01,,,MEC-A1,THR-P1,,,,,ADR-002,DRAFT,Alcance y provisión de claves pendientes
 TRC-002,RQ-02,,,,THR-P1,,MET-APPEND-READY-E2E,,,ADR-003,DRAFT,Checkpoints e intervalos pendientes
 TRC-003,RQ-03,,,,THR-P1,,,,,,DRAFT,Anclaje y rollback pendientes de especificación
 TRC-004,RQ-04,,,MEC-A1,,,MET-APPEND-READY-E2E,,,ADR-003,DRAFT,Otras regiones de costo permanecen pendientes
