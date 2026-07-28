@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-02
 title: Operational Research Questions
-version: 0.1.1
+version: 0.1.2
 status: DRAFT
 academic_source: AlanEspinozaH/proyecto-tesis1
 source_commit: PENDING
@@ -12,7 +12,7 @@ approved_by: PENDING
 
 Este documento no reemplaza al manuscrito académico.
 
-Su función es vincular preguntas de investigación aprobadas con:
+Su función es vincular estas preguntas operacionales, una vez aprobadas, con:
 
 - mecanismos;
 - ataques;

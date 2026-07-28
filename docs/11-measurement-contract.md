@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-11
 title: Measurement Contract
-version: 0.2.1
+version: 0.2.2
 status: PROVISIONAL
 approved_by: PENDING
 ---
@@ -38,7 +38,7 @@ El temporizador comienza cuando:
 - el esquema ya existe;
 - las claves requeridas ya están cargadas;
 - los pragmas ya fueron aplicados;
-- el objeto transaccional ya existe;
+- el objeto lógico del registro ya existe;
 - no ha comenzado aún la canonicalización del registro medido.
 
 ### Fin
