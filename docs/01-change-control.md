@@ -1,4 +1,3 @@
-# change-control
 ---
 document_id: PT2-DOC-01
 title: Change Control

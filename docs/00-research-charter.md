@@ -1,4 +1,3 @@
-# research-charter
 ---
 document_id: PT2-DOC-00
 title: Research Charter

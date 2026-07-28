@@ -22,24 +22,24 @@ Su función es vincular preguntas de investigación aprobadas con:
 
 ## RQ-01 — Aporte del encadenamiento
 
-Estado: PROPOSED
+Estado: DRAFT
 
 ¿Qué diferencias de detectabilidad y localización existen entre HMAC por registro con secuencia explícita y una cadena autenticada frente a manipulaciones del historial?
 
 ## RQ-02 — Granularidad de checkpoints
 
-Estado: PROPOSED
+Estado: DRAFT
 
 ¿Cómo afecta el intervalo de checkpoints firmados a la verificabilidad independiente, el costo de inserción, el almacenamiento y la verificación?
 
 ## RQ-03 — Rollback
 
-Estado: PROPOSED
+Estado: DRAFT
 
 ¿En qué condiciones un anclaje externo intermitente permite detectar la restauración de un historial local anterior e internamente válido?
 
 ## RQ-04 — Descomposición de costos
 
-Estado: PROPOSED
+Estado: DRAFT
 
-¿Qué proporción del costo observado corresponde a preparación, protección criptográfica, persistencia, verificación, checkpoint y comunicación?# research-questions
+¿Qué proporción del costo observado corresponde a preparación, protección criptográfica, persistencia, verificación, checkpoint y comunicación?

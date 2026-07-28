@@ -66,4 +66,4 @@ Identificación de una posición o intervalo relacionado con la primera divergen
 
 ## Verificabilidad independiente
 
-Capacidad de verificar una propiedad utilizando información pública o separada del secreto que produjo el registro.# terminology
+Capacidad de verificar una propiedad utilizando información pública o separada del secreto que produjo el registro.
