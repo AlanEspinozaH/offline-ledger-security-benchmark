@@ -1,3 +1,11 @@
+---
+document_id: PT2-DOC-DECISIONS
+title: Decision Record Governance
+version: 0.1.0
+status: PROVISIONAL
+approved_by: PENDING
+---
+
 # Registro de decisiones
 
 Este directorio conserva decisiones normativas, metodológicas y

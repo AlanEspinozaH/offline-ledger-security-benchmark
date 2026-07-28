@@ -1,7 +1,7 @@
 ---
 decision_id: ADR-003
 title: Append measurement boundary
-version: 0.1.0
+version: 0.2.0
 status: DRAFT
 date: PENDING
 decided_by: PENDING
@@ -229,6 +229,7 @@ fallo aprobada ni una política transaccional lista para implementar.
 
 ## Identificadores de trazabilidad
 
+- `RQ-02`
 - `RQ-04`
 - `MET-APPEND-READY-E2E`
 - `ADR-003`

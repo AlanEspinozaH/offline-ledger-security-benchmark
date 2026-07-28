@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-11
 title: Measurement Contract
-version: 0.2.2
+version: 0.2.3
 status: PROVISIONAL
 approved_by: PENDING
 ---
@@ -15,7 +15,7 @@ approved_by: PENDING
 `BLOCKED`
 
 La implementación queda bloqueada hasta la aprobación de
-`ADR-003-append-measurement-boundary.md`.
+`docs/decisions/ADR-003-append-measurement-boundary.md`.
 
 El ADR debe resolver:
 

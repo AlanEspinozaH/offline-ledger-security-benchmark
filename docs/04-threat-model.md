@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-04
 title: Threat Model
-version: 0.2.1
+version: 0.2.2
 status: PROVISIONAL
 approved_by: PENDING
 ---
@@ -91,4 +91,6 @@ El estado confiable dependerá del escenario:
 
 ### Relación con ataques
 
-Las operaciones concretas se definen mediante identificadores `ATT-*` en `docs/09-attack-catalog.md`.
+Los futuros ataques usarán identificadores `ATT-*`, pero su definición en
+`docs/09-attack-catalog.md` continúa pendiente. Mientras el catálogo no esté
+poblado, no existen ataques normativos implementables ni trazables.
