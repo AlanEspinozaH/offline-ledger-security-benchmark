@@ -1,7 +1,7 @@
 ---
 decision_id: ADR-004
 title: External Anchor and Checkpoint Externalization Boundary
-version: 0.2.0
+version: 0.2.1
 status: APPROVED
 date: 2026-07-29
 decided_by: Alan Espinoza
@@ -573,6 +573,19 @@ el protocolo de checkpoints y el plan de medición cuando sean autorizadas.
   comercial de identidades;
 - definir fallos del canal como ataques normativos sin un perfil aprobado;
 - congelar el formato del sobre antes de resolver su codificación autenticada.
+
+## Recomendación técnica no vinculante considerada
+
+> Utilizar un anclaje externo simulado, fuera del snapshot restaurable, como
+> configuración experimental principal; reservar una pasarela fuera de banda
+> como demostración opcional; mantener Internet directo fuera del núcleo
+> experimental.
+
+Esta recomendación fue una entrada técnica no vinculante y no constituye por sí
+sola la decisión normativa. Fue considerada, modificada y resuelta por el
+investigador. Se conserva para auditar qué partes fueron aceptadas, ampliadas o
+modificadas. La decisión normativa aplicable es la registrada posteriormente en
+`## Resolución aprobada` y `## Decisión del investigador`.
 
 ## Resolución aprobada
 
