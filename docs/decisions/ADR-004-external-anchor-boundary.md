@@ -1,25 +1,26 @@
 ---
 decision_id: ADR-004
 title: External Anchor and Checkpoint Externalization Boundary
-version: 0.1.0
-status: DRAFT
-date: PENDING
-decided_by: PENDING
+version: 0.2.0
+status: APPROVED
+date: 2026-07-29
+decided_by: Alan Espinoza
 ---
 
 # ADR-004 — Frontera del anclaje externo y externalización de checkpoints
 
 ## Estado y alcance del expediente
 
-Este expediente documenta una decisión pendiente. No selecciona ni aprueba una
-modalidad de externalización, no autoriza implementación y no define todavía
+Este expediente registra la decisión aprobada por el investigador sobre la
+frontera arquitectónica de externalización y el papel experimental de las
+alternativas A–F. La aprobación no autoriza implementación y no define todavía
 clases, endpoints, sockets, formatos binarios, tablas SQLite ni servicios de
 red.
 
 Los contratos `docs/07-checkpoint-protocol.md` y
 `docs/08-anchor-protocol.md` todavía no contienen una especificación normativa
-implementable. Este ADR organiza las alternativas que el investigador deberá
-aceptar, modificar o rechazar conforme a `docs/01-change-control.md`.
+implementable. Este ADR autoriza que sus especificaciones derivadas se redacten
+en tareas posteriores y separadas conforme a `docs/01-change-control.md`.
 
 ## Contexto
 
@@ -34,14 +35,13 @@ anclaje externo ni falsificar una firma válida. Esa exclusión delimita al
 adversario local; no describe ataques de red, una pasarela hostil ni la
 disponibilidad de un servicio externo.
 
-Se evaluará la siguiente hipótesis arquitectónica común:
+La resolución aprueba para esta frontera arquitectónica la siguiente premisa:
 
 > El estado necesario para detectar rollback debe conservarse fuera del dominio
 > que `THR-P1` puede restaurar junto con la base local.
 
-Esta formulación es una hipótesis de diseño para comparar alternativas. No está
-aprobada, no redefine `THR-P1` y no demuestra por sí sola que cualquier canal o
-almacenamiento externo sea seguro.
+Esta formulación delimita la comparación aprobada. No redefine `THR-P1` y no
+demuestra por sí sola que cualquier canal o almacenamiento externo sea seguro.
 
 ## Pregunta exacta que requiere decisión
 
@@ -49,9 +49,9 @@ almacenamiento externo sea seguro.
 > para mantener checkpoints fuera del dominio local restaurable, sin ampliar
 > innecesariamente el alcance científico de PT2?
 
-La decisión futura debe identificar una configuración experimental principal,
-las demostraciones opcionales —si las hubiera— y las afirmaciones que cada
-configuración permite o prohíbe.
+La resolución registrada identifica la configuración experimental principal,
+el control, las demostraciones opcionales y las afirmaciones que cada papel
+permite o prohíbe.
 
 ## Propiedad estudiada y aspectos de sistema
 
@@ -173,7 +173,8 @@ justificada:
 
 ## Alternativas consideradas
 
-Ninguna alternativa de esta sección está aprobada o rechazada formalmente.
+El análisis de esta sección se conserva como fundamento de la resolución. El
+papel decidido de cada alternativa se registra en `Estado de las alternativas`.
 
 ### Alternativa A — Sin anclaje externo
 
@@ -223,10 +224,11 @@ ubicada accidentalmente dentro del mismo snapshot invalidaría esa separación.
 
 #### Confianza, disponibilidad e integridad
 
-El montaje debe declarar la política del proceso simulado, su retención y los
-fallos inyectados. Puede aceptar sobres firmados sin poseer claves privadas. Su
-integridad y disponibilidad son propiedades del modelo simulado, no de una red
-real.
+El montaje deberá declarar la política del proceso simulado y su retención
+cuando esas especificaciones sean aprobadas. Puede aceptar sobres firmados sin
+poseer claves privadas. Su integridad y disponibilidad son propiedades del
+modelo simulado, no de una red real. Esta decisión no autoriza inyección de
+fallos contra el canal.
 
 #### Medición y alcance
 
@@ -239,7 +241,7 @@ una red real.
 
 - separación controlable respecto del snapshot;
 - baja variación operacional;
-- fallos reproducibles y ejecución automatizada;
+- comportamiento reproducible y ejecución automatizada;
 - menor ampliación de alcance que dispositivos o Internet.
 
 #### Desventajas y consecuencias
@@ -256,28 +258,30 @@ un dominio externo.
 #### Capacidad y frontera
 
 Puede permitir detectar rollback cuando la pasarela o el registro posterior
-conservan un estado que el adversario local no restaura. La pasarela puede
-simular modificación, retraso, repetición, reordenamiento o descarte.
+conservan un estado que el adversario local no restaura. Su selección como
+demostración opcional no autoriza simular modificación, retraso, repetición,
+duplicación, reordenamiento, descarte ni intercambio entre terminales.
 
 #### Confianza, disponibilidad e integridad
 
-La pasarela no recibe claves privadas. Puede negar, retrasar, duplicar o
-reordenar entregas y afectar disponibilidad, pero no debe poder fabricar una
-firma válida del POS. La confianza necesaria en ella depende de si el registro
-externo verifica firmas, conserva orden o emite recibos.
+La pasarela no recibe claves privadas y no debe poder fabricar una firma válida
+del POS. Sus capacidades, garantías de disponibilidad y relación con el
+registro externo requerirán especificación posterior. Este ADR no aprueba un
+modelo de pasarela hostil.
 
 #### Medición y alcance
 
-Es automatizable y permite separar fallos de canal de fallos criptográficos.
-Añade un componente y una frontera operativa, pero puede mantenerse como
-demostración controlada sin desplegar una red productiva.
+Tiene potencial de automatización y hace visible una frontera operativa
+adicional, pero se conserva únicamente como demostración opcional. No pertenece
+al benchmark principal ni habilita inyección de fallos. Su implementación
+requerirá una tarea separada.
 
 #### Ventajas
 
 - hace visible la separación entre productor, transporte y registro;
-- permite inyectar fallos del canal de forma controlada;
 - evita entregar la clave privada a la pasarela;
-- permite estudiar disponibilidad sin atribuirle capacidad de falsificación.
+- permite demostrar una separación lógica sin atribuirle capacidad de
+  falsificación.
 
 #### Desventajas y consecuencias
 
@@ -400,8 +404,9 @@ pertenecen automáticamente al núcleo computacional del benchmark.
 
 ## Matriz comparativa cualitativa
 
-Las matrices siguientes cubren los diecisiete criterios sin asignar puntuaciones
-numéricas ni declarar una alternativa ganadora.
+Las matrices siguientes conservan el análisis cualitativo de los diecisiete
+criterios sin asignar puntuaciones numéricas. Los papeles decididos se registran
+posteriormente y prevalecen sobre las posibilidades descritas en este análisis.
 
 ### Seguridad, separación y confianza
 
@@ -409,7 +414,7 @@ numéricas ni declarar una alternativa ganadora.
 |---|---|---|---|---|---|
 | A — Sin anclaje | No distingue rollback completo internamente válido. | Ninguna. | Solo local; no añade canal. | No aplica. | No existe. |
 | B — Simulado | Posible si conserva la confirmación pertinente. | Lógica o de proceso, demostrable fuera del snapshot. | Interfaz y proceso simulado. | Política controlada del simulador. | Retención y aislamiento configurados experimentalmente. |
-| C — Pasarela | Posible tras registro externo confirmado. | Pasarela o registro separado. | Manipulación, orden, retraso, descarte y asociación. | No falsifica firmas; sí puede afectar entrega. | Debe conservar estado verificable y vigente. |
+| C — Pasarela | Posible tras registro externo confirmado. | Pasarela o registro separado. | Superficie adicional no evaluada adversarialmente en esta etapa. | No recibe claves privadas; sus demás capacidades siguen pendientes. | Debe conservar estado verificable y vigente. |
 | D — QR | Posible después de escaneo y conservación correctos. | Física mediante dispositivo receptor. | Pantalla, cámara, codificación, operador y asociación. | Operador o receptor afecta entrega, no debe falsificar firmas. | Retención en dispositivo o registro receptor. |
 | E — Removible | Posible si se conserva y selecciona la copia pertinente. | Física después de retirar el medio. | Sustitución, contaminación, pérdida, montaje y selección. | Operación humana; no requiere pasarela lógica. | Medio no confiable para disponibilidad o frescura; firma protege autenticidad del sobre. |
 | F — Internet | Posible tras confirmación conservada por el servicio. | Servicio externo al snapshot. | DNS, TLS, autenticación, red, servicio y dependencias. | No aplica o queda integrada en el servicio. | Requiere retención, consulta y operación del servicio. |
@@ -420,7 +425,7 @@ numéricas ni declarar una alternativa ganadora.
 |---|---|---|---|---|---|
 | A — Sin anclaje | Alta. | Alta. | Mínima. | Ninguna adicional. | Alta como control, insuficiente para la propiedad externa. |
 | B — Simulado | Alta con protocolo y estado aislado. | Alta. | Baja a media. | Limitada al modelo simulado. | Alta para el benchmark principal. |
-| C — Pasarela | Alta si la pasarela es controlada y versionada. | Alta. | Media. | Añade frontera y fallos de canal. | Media a alta como demostración o tratamiento controlado. |
+| C — Pasarela | Alta si la pasarela es controlada y versionada. | Alta. | Media. | Añade una frontera lógica; no añade tratamientos aprobados de fallos. | Media como demostración opcional. |
 | D — QR | Sensible a hardware y entorno. | Baja a media. | Media a alta. | Añade dispositivos y factores humanos. | Media como demostración, baja como núcleo repetible. |
 | E — Removible | Sensible al procedimiento físico. | Media para archivos, baja para traslado. | Media. | Añade operación y seguridad del medio. | Media como demostración. |
 | F — Internet | Sensible a red, proveedor y configuración. | Alta durante operación. | Alta. | Añade red y servicio externo. | Baja a media para el núcleo de PT2. |
@@ -430,8 +435,8 @@ numéricas ni declarar una alternativa ganadora.
 | Alternativa | Disponibilidad | Integridad | Confidencialidad de metadatos | Medición computacional | Medición operacional | Conclusiones permitidas | Conclusiones no sostenibles |
 |---|---|---|---|---|---|---|---|
 | A — Sin anclaje | Solo local. | Mecanismos locales, sin frescura externa. | No hay exportación. | Clara línea base local. | No aplica. | Costos y límites del caso local. | Detección de rollback completo. |
-| B — Simulado | Definida por fallos inyectados. | Verificable dentro del modelo. | Debe registrarse la exposición del sobre. | Aislable y repetible. | Mínima. | Detección y costos bajo el simulador. | Seguridad o rendimiento de red real. |
-| C — Pasarela | Puede degradarse por retraso o descarte. | Firma del sobre y asociación aún por especificar. | La pasarela observa metadatos exportados. | Aislable por componentes. | Baja si se automatiza. | Efectos de una pasarela modelada y fallos controlados. | Seguridad de Internet o disponibilidad productiva. |
+| B — Simulado | Pendiente de especificación; no se evalúa un canal hostil. | Verificable dentro del modelo. | Debe registrarse la exposición del sobre. | Aislable y repetible. | Mínima. | Detección y costos bajo el simulador. | Seguridad o rendimiento de red real. |
+| C — Pasarela | Garantías pendientes de especificación. | Firma del sobre y asociación aún por especificar. | La pasarela observa metadatos exportados. | Fuera de las métricas principales. | Baja si se automatiza. | Factibilidad demostrativa de una separación lógica. | Fallos adversariales, seguridad de Internet o disponibilidad productiva. |
 | D — QR | Depende de lectura y operador. | Firma detectable; asociación y lectura pueden fallar. | Visible para observadores y dispositivo receptor. | Codificación y verificación aislables. | Escaneo y confirmación relevantes. | Factibilidad demostrativa del canal visual. | Comparabilidad directa con latencias puramente computacionales. |
 | E — Removible | Depende de medio y custodia. | Firma detectable; selección y frescura no garantizadas. | Metadatos visibles a quien acceda al medio. | Archivo, firma y verificación aislables. | Montaje, traslado y selección relevantes. | Factibilidad de transporte físico de un sobre mínimo. | Seguridad general del medio o ausencia de contaminación. |
 | F — Internet | Depende de red y servicio. | Requiere transporte y servicio configurados; alcance pendiente. | Servicio y red observan metadatos salvo protección adicional. | Se mezcla con bibliotecas y red si no se separa. | Baja intervención humana normal. | Comportamiento de la configuración concreta. | Seguridad de red general usando solo `THR-P1`. |
@@ -480,9 +485,13 @@ pendientes. Un recibo útil tendría que vincularse inequívocamente al checkpoi
 correcto y no puede inferirse solo porque una operación de transporte retornó
 sin error. Este expediente no fija campos ni formato de recibo.
 
-## Fallos y adversario del canal pendientes
+## Canal adversarial pendiente
 
-Un futuro perfil separado deberá considerar, como mínimo:
+La selección de C como demostración opcional no autoriza inyección de fallos.
+No se aprueban ataques contra el canal, no se crea `THR-P2` y no se crean
+identificadores `ATT-*`.
+
+Continúan pendientes, como posibles materias de una evaluación futura:
 
 - modificación;
 - repetición;
@@ -493,10 +502,11 @@ Un futuro perfil separado deberá considerar, como mínimo:
 - intercambio entre terminales;
 - asociación con un recibo incorrecto.
 
-Este expediente no asigna identificadores de ataque, no modifica `THR-P1` y no
-crea un segundo perfil de amenaza. Hasta que ese perfil y sus operaciones sean
-aprobados, estas conductas son materias pendientes y no ataques normativos
-implementables.
+Cualquier evaluación adversarial del canal requerirá primero un perfil de
+amenaza independiente, con capacidades explícitas, activos y fronteras
+definidos, ataques normativos trazables y aprobación posterior del investigador.
+Este expediente no modifica `THR-P1`. Hasta obtener esas aprobaciones, las
+conductas enumeradas no son ataques normativos implementables.
 
 ## Costos y futuras mediciones
 
@@ -553,7 +563,7 @@ el protocolo de checkpoints y el plan de medición cuando sean autorizadas.
 - confundir firma válida con prueba de frescura;
 - aceptar como confirmada una entrega que no fue persistida;
 - asociar un recibo al ledger, terminal o checkpoint incorrecto;
-- confiar en la disponibilidad de una pasarela que puede descartar mensajes;
+- presumir garantías de disponibilidad de una pasarela todavía no especificadas;
 - permitir que una pasarela reciba claves privadas o credenciales del POS;
 - exportar la base completa o material secreto por conveniencia;
 - exponer patrones temporales o identificadores sin declarar su impacto;
@@ -564,52 +574,183 @@ el protocolo de checkpoints y el plan de medición cuando sean autorizadas.
 - definir fallos del canal como ataques normativos sin un perfil aprobado;
 - congelar el formato del sobre antes de resolver su codificación autenticada.
 
-## Recomendación técnica provisional no vinculante
+## Resolución aprobada
 
-> Utilizar un anclaje externo simulado, fuera del snapshot restaurable, como
-> configuración experimental principal; reservar una pasarela fuera de banda
-> como demostración opcional; mantener Internet directo fuera del núcleo
-> experimental.
-
-La recomendación no está aprobada. El investigador debe aceptarla, modificarla o
-rechazarla. No autoriza implementación, no desbloquea mecanismos, no congela
-`RQ-03` ni `RQ-04` y no convierte ninguna alternativa en decisión final.
+El investigador resolvió la recomendación provisional: B es la configuración
+experimental principal, A es el control negativo, C, D y E son demostraciones
+opcionales, y F queda fuera del núcleo experimental. Esta resolución se limita a
+la frontera arquitectónica; no autoriza todavía las especificaciones derivadas
+ni desbloquea mecanismos o métricas.
 
 ## Estado de las alternativas
 
-Todas las alternativas A–F permanecen pendientes. Las desventajas descritas
-explican por qué una opción podría no ser recomendable para el núcleo
-experimental, pero ninguna está formalmente rechazada.
+| Alternativa | Estado decidido        | Papel                                                 |
+| ----------- | ---------------------- | ----------------------------------------------------- |
+| A           | SELECTED_CONTROL       | Control negativo                                      |
+| B           | SELECTED_PRIMARY       | Configuración experimental principal                  |
+| C           | OPTIONAL_DEMONSTRATION | Demostración opcional; sin ataques de canal aprobados |
+| D           | OPTIONAL_DEMONSTRATION | Demostración visual opcional                          |
+| E           | OPTIONAL_DEMONSTRATION | Demostración con medio removible opcional             |
+| F           | OUT_OF_CORE_SCOPE      | Fuera del núcleo experimental                         |
+
+Estos valores describen exclusivamente el papel decidido dentro de ADR-004. No
+son nuevos estados generales del sistema documental y no sustituyen el estado
+documental `APPROVED` del expediente.
 
 ## Preguntas pendientes para el investigador
 
-- ¿Cuál alternativa debe ser la configuración experimental principal?
-- ¿Debe existir una demostración opcional y cuál sería su propósito probatorio?
 - ¿Qué estado mínimo debe retener el registro externo?
-- ¿Qué propiedades de retención y frescura se exigen al almacenamiento externo?
+- ¿Qué política de retención se exige al almacenamiento externo?
+- ¿Qué propiedad de frescura se exige al estado externo?
 - ¿Qué evento constituye una confirmación efectivamente conservada?
-- ¿Cómo se asocia un recibo con ledger, terminal y checkpoint?
-- ¿Quién verifica la firma antes de persistir o consultar?
+- ¿Cómo se asocia el estado externo con ledger, terminal y checkpoint?
+- ¿Quién verifica la firma y en qué etapa debe hacerlo?
 - ¿De dónde obtiene el verificador la clave pública confiable?
-- ¿Qué codificación autenticada y reglas de versionado tendrá el sobre?
-- ¿Cómo se tratan sobres repetidos, atrasados, reordenados o descartados?
+- ¿Qué codificación autenticada tendrá el sobre?
+- ¿Qué reglas de versionado tendrá el sobre y el protocolo?
 - ¿Qué confidencialidad requieren los metadatos exportados?
-- ¿Qué responsabilidades conserva una pasarela y cuáles pertenecen al registro?
-- ¿Qué aspectos del canal requieren un perfil de amenaza separado?
 - ¿Qué costos futuros requieren métricas normativas independientes?
-- ¿Cómo se relacionarán generación, externalización y confirmación sin fijar
-  prematuramente la ventana de rollback?
-- ¿Qué aspectos de Internet deben permanecer explícitamente fuera de alcance?
+- ¿Qué frecuencias de generación de checkpoints y externalización se definirán?
+- ¿Qué perfil separado modelaría al adversario del canal?
+- ¿Qué ataques del canal podrían proponerse bajo ese perfil?
+- ¿Qué criterios, propósito probatorio y evidencia se exigirían para implementar
+  una posible demostración opcional?
 
 ## Decisión del investigador
 
-PENDING
+### Configuración experimental principal
+
+Se selecciona la alternativa B, anclaje externo simulado, como configuración
+experimental principal. El estado externo pertinente deberá persistir fuera del
+dominio local restaurable y esa separación deberá poder demostrarse
+experimentalmente.
+
+El anclaje simulado representa la frontera necesaria para estudiar rollback,
+pero no representa ni simula necesariamente una red productiva. Sus resultados
+no permiten concluir seguridad, disponibilidad o latencia de Internet.
+
+### Control
+
+Se selecciona la alternativa A como control negativo para demostrar las
+limitaciones de mantener todo el estado confiable dentro del dominio
+restaurable. A no constituye una solución de detección de rollback completo.
+
+### Demostraciones opcionales
+
+Se conservan únicamente como demostraciones opcionales:
+
+- C, pasarela lógica independiente;
+- D, canal visual QR;
+- E, medio removible.
+
+Ninguna pertenece al benchmark principal en esta etapa ni forma parte de las
+métricas computacionales principales. Sus costos operacionales no deberán
+mezclarse con tiempos criptográficos. Cada implementación requerirá una tarea
+separada y podrá omitirse sin invalidar el experimento principal.
+
+En particular, C no es una configuración secundaria para inyección de fallos y
+su papel opcional no autoriza todavía inyección de fallos.
+
+### Canal adversarial pendiente
+
+No se aprueban ataques contra el canal, no se crea `THR-P2` y no se crean
+identificadores `ATT-*`. Modificación, repetición, duplicación, reordenamiento,
+retraso, descarte, intercambio entre terminales y cualquier otra conducta
+adversarial del canal continúan pendientes.
+
+Cualquier evaluación adversarial requerirá primero un perfil de amenaza
+independiente con capacidades explícitas, activos y fronteras definidos, ataques
+normativos trazables y aprobación posterior del investigador.
+
+### Fuera del núcleo experimental
+
+La alternativa F, Internet directo desde el POS, queda fuera del núcleo
+experimental de PT2. Esta exclusión evita ampliar el proyecto hacia seguridad de
+red, TLS, DNS, disponibilidad productiva, autenticación de servicios y operación
+remota.
+
+La exclusión no significa que Internet directo sea intrínsecamente inseguro.
+`THR-P1` no cubre ataques de red y esta decisión no afirma lo contrario.
+
+### Verificación independiente
+
+El verificador consultará el estado externo de forma independiente. El estado
+externo relevante no podrá obtenerse únicamente del snapshot local presentado.
+En la configuración principal, el POS no importará un recibo del anclaje; la
+ausencia de ese recibo importado reduce el canal de entrada al POS.
+
+Continúa pendiente definir qué constituye una confirmación externa válida y cómo
+obtiene el verificador una clave pública confiable.
+
+### Límite de la aprobación
+
+La aprobación se limita a la frontera arquitectónica y al papel experimental de
+las alternativas. No aprueba todavía:
+
+- el formato del checkpoint;
+- la codificación autenticada del sobre;
+- el protocolo de anclaje;
+- la semántica normativa de confirmación;
+- clases Java;
+- tablas SQLite;
+- endpoints;
+- perfiles de amenaza adicionales;
+- ataques;
+- nuevas métricas;
+- parámetros experimentales.
 
 ## Consecuencias de la decisión seleccionada
 
-PENDING. Este expediente no autoriza una modalidad de externalización, no
-desbloquea `MEC-A1` ni `MET-APPEND-READY-E2E`, no congela preguntas de
-investigación y no permite implementar ataques o mecanismos nuevos.
+### Consecuencias positivas
+
+- separación clara entre el estado externo y el dominio local restaurable;
+- reproducibilidad y automatización del montaje principal;
+- baja variabilidad operacional;
+- comparación directa con el control A;
+- alcance compatible con PT2;
+- aislamiento de la propiedad de detección de rollback respecto de la seguridad
+  de red.
+
+### Limitaciones
+
+- las conclusiones solo aplican al modelo de anclaje simulado aprobado;
+- no se demuestra seguridad de Internet, nube, TLS, DNS o redes;
+- no se evalúa todavía un canal hostil;
+- no se demuestra disponibilidad productiva;
+- QR, medio removible y pasarela no forman parte de las métricas principales;
+- la aprobación no especifica formatos ni parámetros.
+
+### Trabajo derivado autorizado
+
+Esta decisión autoriza redactar, en tareas posteriores y separadas:
+
+- `docs/07-checkpoint-protocol.md`;
+- `docs/08-anchor-protocol.md`;
+- `docs/13-harness-architecture.md`.
+
+También autoriza evaluar posteriormente si deben armonizarse:
+
+- `docs/02-research-questions.md`;
+- `docs/11-measurement-contract.md`;
+- `docs/16-traceability-matrix.csv`.
+
+Esta autorización no modifica esos documentos en la tarea actual, salvo las
+filas expresamente autorizadas de la matriz de trazabilidad.
+
+### Bloqueos que permanecen
+
+`MEC-A1` y `MET-APPEND-READY-E2E` continúan en estado `BLOCKED`. ADR-004 no
+resuelve por sí sola:
+
+- ADR-001;
+- ADR-002;
+- ADR-003;
+- la codificación autenticada;
+- la provisión de claves;
+- la frontera temporal de medición.
+
+La decisión tampoco congela `RQ-03` o `RQ-04` ni permite implementar ataques,
+protocolos o mecanismos nuevos.
 
 ## Documentos afectados
 
@@ -622,9 +763,9 @@ investigación y no permite implementar ataques o mecanismos nuevos.
 - `docs/16-traceability-matrix.csv`
 - `docs/decisions/README.md`
 
-Solo la matriz y el registro de decisiones se actualizan en esta tarea. Los
-demás documentos requerirán tareas autorizadas después de una decisión del
-investigador.
+Además de este expediente, solo la matriz y el registro de decisiones se
+actualizan en esta tarea. Los demás documentos requerirán tareas posteriores
+separadas.
 
 ## Identificadores de trazabilidad
 
