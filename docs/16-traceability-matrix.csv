@@ -4,5 +4,5 @@ TRC-005,RQ-01,,,MEC-A1,THR-P1,,,,,ADR-002,DRAFT,Alcance y provisión de claves p
 TRC-002,RQ-02,,,,THR-P1,,MET-APPEND-READY-E2E,,,ADR-003,DRAFT,Checkpoints e intervalos pendientes
 TRC-003,RQ-03,,,,THR-P1,,,,,,DRAFT,Anclaje y rollback pendientes de especificación
 TRC-004,RQ-04,,,MEC-A1,,,MET-APPEND-READY-E2E,,,ADR-003,DRAFT,Otras regiones de costo permanecen pendientes
-TRC-006,RQ-03,,,,THR-P1,,,,,ADR-004,DRAFT,Frontera de externalización y detección de rollback pendientes
-TRC-007,RQ-04,,,,THR-P1,,,,,ADR-004,DRAFT,Costos de externalización y alcance de medición pendientes
+TRC-006,RQ-03,,,,THR-P1,,,,,ADR-004,APPROVED,"B principal, A control y verificación independiente aprobados"
+TRC-007,RQ-04,,,,THR-P1,,,,,ADR-004,APPROVED,"C, D y E fuera de métricas principales; F fuera del núcleo"
