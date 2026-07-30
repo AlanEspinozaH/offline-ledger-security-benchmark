@@ -411,34 +411,74 @@ reconocer de forma segura sus campos de versión.
 
 ### Frontera conceptual entre valores lógicos y bytes recibidos
 
-Esta propuesta distingue dos interfaces conceptuales sin implementar código.
+Esta propuesta distingue cuatro interfaces conceptuales sin implementar código.
 
 #### `encode_record(logical_record)`
 
-- recibe valores ya tipados;
-- valida rangos y el perfil lógico;
+- recibe el registro lógico ya tipado;
+- valida estructura, tipos, rangos y límites lógicos;
 - produce directamente `authenticated_record_bytes_v1`;
-- productor y verificador usan la misma función determinista;
+- no recibe ni produce `key_id`, `tag` o contexto secuencial;
 - es la ruta aplicable cuando se leen columnas lógicas de SQLite.
 
 #### `validate_encoded_record(raw_bytes)`
 
-- se aplica solo cuando existe un blob CBOR recibido, importado o almacenado;
-- valida CBOR bien formado, validez CBOR básica, duplicados, pertenencia al
-  perfil y determinismo;
-- puede comparar `raw_bytes` con una recodificación determinista;
-- no debe suponerse que esta ruta existe si el sistema solo conserva campos
-  lógicos.
+- recibe únicamente `raw_bytes` y se limita a validar la representación
+  codificada;
+- ejecuta las fases 1 a 8 definidas en la sección siguiente: análisis CBOR,
+  descubrimiento de versión, pertenencia al perfil y canonicalidad;
+- propaga un rechazo de codificación o versión y, si todas esas fases tienen
+  éxito, devuelve una estructura interna conceptual `ValidatedEncodedRecord`;
+- esa estructura contiene los mismos `raw_bytes` exactos, las versiones
+  identificadas, los campos exteriores interpretados, el `sequence` autenticado
+  y el `payload` lógico interpretado;
+- no resuelve claves, no verifica HMAC, no evalúa contexto secuencial y no
+  produce por sí sola el estado superior `VALID`.
+
+`ValidatedEncodedRecord` no crea un schema, una clase de código ni un nuevo
+estado superior.
+
+#### `verify_encoded_record(raw_bytes, tag, key_id, sequence_context=None)`
+
+Esta interfaz conceptual representa la verificación completa cuando existen los
+bytes CBOR originales:
+
+1. llama a `validate_encoded_record(raw_bytes)`;
+2. propaga cualquier resultado de codificación o versión;
+3. resuelve la clave mediante el `key_id` externo;
+4. verifica el `tag` externo sobre exactamente los mismos `raw_bytes`;
+5. evalúa el contexto secuencial opcional usando el `sequence` autenticado;
+6. produce uno de los estados superiores existentes de MEC-A1.
+
+`tag` y `key_id` no forman parte de `authenticated_record_bytes_v1`; sus
+semánticas continúan sujetas a ADR-002 y MEC-A1. `sequence_context` es una
+entrada externa opcional y su ausencia no produce automáticamente
+`INVALID_SEQUENCE_CONTEXT`.
+
+#### `verify_logical_record(logical_record, tag, key_id, sequence_context=None)`
+
+Esta interfaz conceptual se aplica cuando SQLite conserva campos lógicos y no
+un blob CBOR original:
+
+1. valida y codifica el registro mediante `encode_record(logical_record)`;
+2. resuelve la clave mediante el `key_id` externo;
+3. verifica el `tag` sobre los bytes deterministas recién producidos;
+4. evalúa el contexto secuencial opcional;
+5. devuelve los mismos estados superiores de MEC-A1.
 
 Reconstruir bytes desde campos de SQLite no demuestra que una serialización
 CBOR original fuera canónica. Afirmar que se rechazó una codificación no
-canónica requiere disponer de los bytes originales. Esta tarea no decide si los
-bytes CBOR se almacenarán junto al registro. La distinción no altera HMAC ni
-autoriza implementación.
+canónica requiere disponer de los bytes originales. Por ello,
+`verify_logical_record(...)` no usa `validate_encoded_record(raw_bytes)` ni
+afirma nada sobre la canonicalidad de una serialización original. Ambas rutas
+autentican exactamente `authenticated_record_bytes_v1`. Esta tarea no decide si
+el sistema almacenará el blob CBOR. Las cuatro firmas son conceptuales: no
+autorizan una API, código productivo ni una modificación de HMAC.
 
 ### Precedencia candidata de verificación
 
-`validate_encoded_record(raw_bytes)` evalúa en este orden:
+`verify_encoded_record(raw_bytes, tag, key_id, sequence_context=None)` evalúa en
+este orden:
 
 1. Comprueba que exista exactamente un elemento CBOR bien formado. Si falla:
    `MALFORMED_RECORD / MALFORMED_CBOR`.
@@ -456,15 +496,21 @@ autoriza implementación.
    detiene aquí y no se aplican reglas de v1 al resto.
 6. Para versiones soportadas por v1, detecta claves duplicadas. Si falla:
    `MALFORMED_RECORD / DUPLICATE_MAP_KEY`.
-7. Comprueba la codificación determinista completa requerida por v1. Si falla:
-   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
-8. Aplica la estructura exacta y las demás restricciones del perfil v1,
-   incluidos `domain` exacto, array de longitud 10, tipos, rangos, límites,
-   profundidad y tipos de `payload`. Si falla:
+7. Comprueba la pertenencia semántica completa al perfil v1 sin evaluar todavía
+   formas alternativas de representación. Esto incluye array exterior de
+   longitud lógica 10, `domain` exacto, tipos admitidos y prohibidos, tags,
+   bignums, float, null, byte string dentro de `payload`, claves no textuales,
+   rangos, longitudes lógicas, límites, profundidad y cardinalidad. Si falla:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
-9. Resuelve la clave. Si falla: `UNKNOWN_KEY`.
-10. Verifica HMAC. Si falla: `INVALID_TAG`.
-11. Evalúa el contexto secuencial cuando exista. Si falla:
+8. Solo para un valor que pertenece semánticamente al perfil v1, comprueba la
+   codificación determinista completa: representación mínima, longitudes
+   definidas, orden de mapas y cualquier otra representación alternativa del
+   mismo valor permitido. Si falla:
+   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+9. Resuelve la clave usando el `key_id` externo. Si falla: `UNKNOWN_KEY`.
+10. Verifica el `tag` externo sobre los bytes autenticados exactos. Si falla:
+    `INVALID_TAG`.
+11. Evalúa `sequence_context` cuando exista. Si falla:
     `INVALID_SEQUENCE_CONTEXT`.
 12. En otro caso: `VALID`.
 
@@ -481,6 +527,38 @@ versión desconocida. Una versión desconocida correctamente identificada produc
 `UNSUPPORTED_VERSION` aunque el resto sea no canónico según v1, siempre que el
 elemento completo siga siendo CBOR bien formado y básicamente válido. CBOR
 truncado o inválido continúa fallando en las fases 1 o 2. El orden completo es
+**CANDIDATO NO NORMATIVO**.
+
+`validate_encoded_record(raw_bytes)` ejecuta únicamente las fases 1 a 8 y, si
+son satisfactorias, devuelve `ValidatedEncodedRecord` en lugar de `VALID`.
+`verify_encoded_record(...)` ejecuta las doce fases. Por su parte,
+`verify_logical_record(...)` obtiene los bytes mediante `encode_record` y luego
+ejecuta conceptualmente la resolución de clave, HMAC y contexto secuencial, sin
+afirmar nada sobre la canonicalidad de bytes originales.
+
+### Precedencia ante defectos superpuestos
+
+`ENCODING_PROFILE_VIOLATION` tiene precedencia sobre
+`NON_CANONICAL_ENCODING` cuando el valor lógico o el tipo CBOR no está admitido
+por el perfil. `NON_CANONICAL_ENCODING` solo se usa cuando el valor pertenece al
+perfil, pero sus bytes no son la representación determinista candidata. Por
+ejemplo:
+
+- un byte string de longitud definida dentro de `payload` produce
+  `ENCODING_PROFILE_VIOLATION`;
+- un byte string de longitud indefinida dentro de `payload` también produce
+  `ENCODING_PROFILE_VIOLATION`, porque el tipo está prohibido;
+- un text string permitido codificado con longitud indefinida produce
+  `NON_CANONICAL_ENCODING`;
+- un entero permitido codificado con ancho no mínimo produce
+  `NON_CANONICAL_ENCODING`;
+- un float codificado en una forma no mínima produce
+  `ENCODING_PROFILE_VIOLATION`, porque float está prohibido;
+- un map con claves textuales válidas, pero en orden incorrecto, produce
+  `NON_CANONICAL_ENCODING`.
+
+`DUPLICATE_MAP_KEY` conserva precedencia anterior para detectar la duplicación
+antes de que un decoder pierda una ocurrencia. Esta regla también es
 **CANDIDATO NO NORMATIVO**.
 
 ## Semántica secuencial candidata
@@ -501,10 +579,12 @@ La propuesta no modifica ADR-004.
 
 ## Relación con ADR-002
 
-`key_id` y el alcance de la clave no se añaden todavía a los bytes candidatos.
-Su semántica permanece en ADR-002. ADR-001 no desbloquea MEC-A1 por sí sola.
-Cualquier futura decisión de autenticar `key_id` deberá reconciliar ADR-001 y
-ADR-002 antes de aprobar bytes normativos.
+`key_id` es externo a `authenticated_record_bytes_v1`. ADR-001 no define todavía
+su formato, longitud, alcance o provisión; estas decisiones y la resolución de
+claves permanecen bloqueadas por ADR-002. Definir conceptualmente `key_id` como
+entrada de verificación no aprueba ADR-002 ni desbloquea MEC-A1. Cualquier futura
+decisión de autenticar `key_id` requerirá revisar y reconciliar ambos ADR antes
+de aprobar bytes normativos.
 
 ## Plan de vectores previo a una posible aprobación
 
@@ -531,15 +611,15 @@ previstos para B son:
 | Orden determinista de map textual | Usar solo claves textuales permitidas, fijar el valor lógico, exigir los bytes candidatos en core deterministic encoding y verificar coincidencia entre dos codificadores independientes. |
 | Orden textual no determinista | Usar el mismo map y las mismas claves textuales, presentar deliberadamente los pares en otro orden y esperar `MALFORMED_RECORD` con detalle `NON_CANONICAL_ENCODING`. |
 | Clave duplicada | Rechazar antes de que el decoder descarte una ocurrencia con `MALFORMED_RECORD` y detalle `DUPLICATE_MAP_KEY`. |
-| Longitud no mínima | Rechazar longitudes o enteros con representación no mínima mediante `MALFORMED_RECORD` y detalle `NON_CANONICAL_ENCODING`. |
+| Longitud no mínima | Cubrir, sobre valores admitidos, un entero con representación no mínima y text string, array y map con longitud indefinida; todos esperan `MALFORMED_RECORD / NON_CANONICAL_ENCODING`. |
 | Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento mediante `MALFORMED_RECORD` y detalle `MALFORMED_CBOR`. |
 | Overflow | Cubrir longitudes, enteros, contadores y cálculos de tamaño fuera de rango. |
-| Valores numéricos prohibidos | Rechazar float, cero negativo flotante, NaN, infinito, bignum y texto numérico donde corresponda mediante `ENCODING_PROFILE_VIOLATION`. |
+| Tipos y valores prohibidos | Cubrir byte string definida e indefinida dentro de payload, float, cero negativo flotante, NaN, infinito, bignum, null, tag y clave no textual; todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. |
 | Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados mediante `MALFORMED_RECORD` con detalle `INVALID_CBOR`. |
 | Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
 | Versión desconocida | Cubrir los cuatro subcasos de despacho definidos después de la tabla y demostrar que una versión desconocida no se interpreta mediante reglas completas de v1. |
 | Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
-| Contexto secuencial inválido con tag válido | Producir `INVALID_SEQUENCE_CONTEXT`, no `INVALID_TAG`, después de validar formato, versión y tag. |
+| Contexto secuencial inválido con tag válido | Usar como entradas externas un registro lógico o bytes autenticados válidos, `tag` válido, `key_id` resoluble y `sequence_context` incompatible; producir `INVALID_SEQUENCE_CONTEXT`. |
 
 El vector `Versión desconocida` incluye, sin generar todavía sus bytes:
 
