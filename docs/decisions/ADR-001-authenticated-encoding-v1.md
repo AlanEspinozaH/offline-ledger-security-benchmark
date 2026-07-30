@@ -1,7 +1,7 @@
 ---
 decision_id: ADR-001
 title: Authenticated encoding v1
-version: 0.2.0
+version: 0.3.0
 status: DRAFT
 date: PENDING
 decided_by: PENDING
@@ -11,486 +11,409 @@ decided_by: PENDING
 
 ## Estado y alcance del expediente
 
-Este expediente compara perfiles técnicos concretos para producir los bytes que
-autenticará MEC-A1. Permanece en estado DRAFT: no selecciona una codificación,
-no define bytes normativos y no autoriza implementación, schema ni vectores
-definitivos.
+Este expediente congela una propuesta técnica concreta para los bytes que
+podría autenticar MEC-A1. ADR-001 permanece `DRAFT` y la decisión del
+investigador permanece `PENDING`.
 
-El investigador deberá aprobar una versión concreta del expediente antes de que
-sus decisiones puedan trasladarse a los documentos normativos afectados. El
-nombre de un estándar no basta para obtener una codificación normativa: cualquier
-alternativa seleccionada deberá restringir tipos, opciones, límites,
-extensibilidad y condiciones de rechazo.
+La selección del finalista y todas las reglas del perfil se marcan
+**CANDIDATO NO NORMATIVO**. No constituyen aprobación, no definen bytes
+normativos, no crean un schema normativo, no autorizan implementación productiva
+y no desbloquean MEC-A1. Esta tarea tampoco genera bytes, vectores ni
+codificadores.
 
 ## Contexto
 
 MEC-A1 autentica una secuencia exacta de bytes. Productor y verificador deben
-obtener los mismos bytes desde el mismo registro lógico sin depender del
+obtener los mismos bytes desde el mismo registro lógico sin depender de
 lenguaje, locale, plataforma, orden accidental de contenedores ni valores
-predeterminados de una biblioteca.
+predeterminados de bibliotecas.
 
-docs/05-record-format.md exige una codificación inequívoca de domain,
-schema_version, mechanism_version, ledger_id, sequence y el payload lógico.
-docs/06-mechanism-specifications.md mantiene MEC-A1 con implementación BLOCKED.
-También existe una diferencia todavía no resuelta entre los nombres
-canonicalPayload y canonical_payload.
+`docs/05-record-format.md` exige una codificación inequívoca de `domain`,
+`schema_version`, `mechanism_version`, `ledger_id`, `sequence` y el payload
+lógico. `docs/06-mechanism-specifications.md` mantiene MEC-A1 con implementación
+`BLOCKED`. Esta propuesta no modifica esos documentos.
 
-RFC 8949 define CBOR y sus requisitos de codificación determinista, pero permite
-que cada protocolo construya un modelo específico y determine cómo rechazar
-datos inesperados. RFC 8785 define JCS sobre el subconjunto I-JSON descrito por
-RFC 7493, con serialización y orden deterministas. Ninguna referencia se
-considera seleccionada o aprobada por este expediente.
+RFC 8949 define CBOR y requisitos de codificación determinista, pero cada
+protocolo debe cerrar su modelo, límites y condiciones de rechazo. RFC 8785
+define JCS sobre I-JSON. Ninguna referencia externa ni esta propuesta sustituyen
+la aprobación expresa del investigador.
 
 ## Problema exacto que requiere decisión
 
-El investigador debe seleccionar y aprobar un perfil completo que determine:
+Antes de aprobar ADR-001, el investigador deberá evaluar un perfil completo que
+determine:
 
-- el modelo lógico y los tipos admitidos;
-- la estructura externa y su política de extensión;
-- la representación única de cada campo;
-- los bytes de separación de dominio;
-- el versionado y las condiciones de rechazo;
-- la política Unicode, temporal y numérica;
-- el tratamiento de entradas válidas para el formato base pero no canónicas;
-- el nombre normativo del payload y de los bytes autenticados;
-- la relación entre autenticación de sequence y validación contextual;
-- los vectores independientes que demuestren interoperabilidad byte a byte.
+- modelo lógico y tipos admitidos;
+- estructura exterior y extensibilidad;
+- representación única de cada campo;
+- separación de dominio y versionado;
+- políticas Unicode, temporal y numérica;
+- límites y condiciones de rechazo;
+- conducta ante CBOR válido pero fuera del perfil o no determinista;
+- nombres separados para el valor lógico y los bytes autenticados;
+- relación entre autenticación de `sequence` y validación contextual;
+- validación independiente mediante vectores byte a byte.
 
-La decisión no puede reducirse a escoger una biblioteca o escribir “CBOR”,
-“CBOR determinista”, “JSON” o “JCS”. Debe congelar un perfil PT2 verificable.
+Esta versión congela una propuesta verificable para revisión y posible
+experimentación. No resuelve la decisión científica, que continúa `PENDING`.
 
 ## Distinción obligatoria sobre secuencia
 
-Tres propiedades diferentes deben permanecer separadas:
+Deben permanecer separadas tres propiedades:
 
-1. **Autenticación del valor declarado:** sequence forma parte de los bytes
-   autenticados. Un tag válido demuestra que ese valor fue autenticado bajo la
-   clave y el mensaje correspondientes; no demuestra que sea el valor esperado.
-2. **Validación contextual:** detectar inicio inválido, huecos, duplicados o
-   reordenamiento requiere comparar el valor autenticado con un contexto
-   secuencial explícito.
-3. **Conocimiento del extremo terminal vigente:** ni un tag válido ni la
-   continuidad interna demuestran por sí solos que el último registro presentado
-   sea el extremo vigente. Esa referencia requiere estado terminal confiable o
-   una propiedad externa aprobada.
+1. `sequence` forma parte del mensaje autenticado; un tag válido demuestra que
+   ese valor fue autenticado, no que sea el valor esperado.
+2. Inicio, huecos, duplicados o reordenamiento requieren comparar el valor con un
+   contexto secuencial explícito.
+3. Ni un tag válido ni la continuidad interna demuestran que el último registro
+   presentado sea el extremo terminal vigente.
 
-INVALID_TAG debe reservarse para un fallo de autenticación criptográfica.
-INVALID_SEQUENCE_CONTEXT debe describir un fallo de la política contextual y no
-debe presentarse como prueba de falsificación.
+`INVALID_TAG` se reserva para un fallo criptográfico.
+`INVALID_SEQUENCE_CONTEXT` describe un fallo de política contextual y no prueba
+falsificación.
 
-## Criterios y dimensiones de evaluación
+## Criterios conceptuales de evaluación
 
-Las alternativas se comparan sin puntuación numérica mediante:
+Las alternativas se conservan bajo los mismos criterios conceptuales:
 
-- inyectividad práctica;
-- determinismo;
-- independencia de lenguaje;
-- facilidad para crear vectores byte a byte;
-- complejidad del verificador;
-- tipos admitidos y rechazo de entradas no canónicas;
-- enteros de 64 bits, tiempo, UUID y Unicode;
+- inyectividad práctica y determinismo;
+- independencia de lenguaje y facilidad de producir vectores byte a byte;
+- complejidad del verificador y rechazo de formas no canónicas;
+- tratamiento de int64, tiempo, identificadores binarios y Unicode;
 - objetos, listas, duplicados, nulos y coma flotante;
-- versionado y separación de dominio;
-- tamaño y dependencia de bibliotecas;
-- posibilidad de validación cruzada independiente.
+- versionado, separación de dominio, tamaño y dependencia de bibliotecas;
+- validación cruzada independiente.
 
-## Alternativa A — Perfil binario propio
+## Alternativas evaluadas y clasificación provisional
 
-Perfil diseñado para PT2, con estructura externa de posiciones fijas o TLV,
-enteros de ancho y endianess explícitos y prefijos de longitud para todo valor
-variable. La aprobación tendría que escoger una sola variante y documentar cada
-octeto.
+### Alternativa A — Perfil binario propio
 
-### Estructura y framing
+**Alternativa evaluada no finalista.** Un formato propio con posiciones fijas o
+TLV puede ser compacto e inyectivo, pero PT2 tendría que especificar y validar
+cada ancho, signo, endianess, prefijo de longitud, orden, duplicado, límite y
+regla de extensión. El parser podría ser pequeño, pero toda la seguridad del
+framing, overflow, truncamiento y contenido sobrante quedaría a cargo del
+proyecto.
 
-Una estructura fija puede ordenar campos obligatorios por posición y asociar la
-versión con una gramática cerrada. Un diseño TLV puede identificar tipo y longitud
-para admitir extensiones, pero debe definir orden, unicidad de etiquetas, tags
-desconocidos y si una repetición es siempre inválida. Mezclar ambos modelos sin
-una regla única produciría más de una representación.
+A conserva ventajas de tamaño predecible, enteros naturales y trazas
+hexadecimales simples. Su riesgo dominante es el framing inventado, junto con el
+costo de dos implementaciones independientes y vectores exhaustivos para un
+modelo recursivo propio. Por ese riesgo y costo permanece evaluada, pero no se
+producirán sus bytes candidatos completos en la siguiente etapa.
 
-Los anchos de enteros, su signo y endianess deben congelarse. Los prefijos de
-longitud deben fijar ancho, endianess, unidad, valor máximo y manejo de overflow,
-truncamiento o contenido sobrante. El framing propio aumenta el riesgo de
-colisiones de campos, errores de límites y evolución incompatible.
+### Alternativa B — Perfil CBOR determinista restringido
 
-### Evaluación por dimensión
+**Único perfil candidato finalista.** CBOR ofrece enteros binarios, arrays y
+mapas, representaciones compactas y reglas deterministas estandarizadas. El
+perfil PT2 aún debe ser más estricto que CBOR genérico para excluir tipos,
+representaciones y opciones no necesarias.
 
-| Dimensión | Análisis del perfil binario propio |
-|---|---|
-| Inyectividad práctica | Puede ser alta si posiciones o tags, tipos y longitudes son inequívocos; un prefijo ambiguo o una etiqueta repetida la rompe. |
-| Determinismo | Alto solo después de fijar orden, anchos, endianess, longitudes, nulos y extensiones. |
-| Independencia de lenguaje | Posible porque el formato sería byte a byte, pero exige evitar tipos nativos implícitos y overflow dependiente del lenguaje. |
-| Vectores byte a byte | Muy directos en hexadecimal; deben provenir también de una implementación independiente. |
-| Complejidad del verificador | El parser puede ser pequeño, pero toda validación de framing, límites y extensiones queda a cargo de PT2. |
-| Tipos admitidos | Deben enumerarse expresamente; no existe un modelo estándar que cierre el conjunto. |
-| Rechazo no canónico | Deben rechazarse anchos alternativos, orden alternativo, tags duplicados, longitudes redundantes y bytes sobrantes según el perfil aprobado. |
-| Enteros de 64 bits | Representación natural con ancho fijo o longitud mínima; deben fijarse signo, rango y endianess. |
-| Tiempo | Puede ser entero de ancho fijo o texto con longitud; unidad y rango siguen siendo decisiones separadas. |
-| UUID | Puede usar 16 bytes o texto; el perfil debe seleccionar una sola representación y orden de bytes. |
-| Unicode | Las cadenas pueden codificarse en UTF-8, pero normalización, validez y rechazo siguen a cargo del perfil. |
-| Objetos y listas | Requieren gramática propia recursiva, límites de profundidad y reglas de orden. |
-| Campos duplicados | Deben prohibirse explícitamente en TLV u objetos; una estructura fija evita duplicados de campos conocidos. |
-| Nulos | Deben prohibirse o recibir un tag único; ausencia y null no pueden confundirse. |
-| Coma flotante | Puede excluirse de forma simple; si se admite, requiere ancho, NaN, infinitos y cero negativo. |
-| Versionado | Puede integrarse en cabecera o primer campo, con política explícita para versiones desconocidas. |
-| Separación de dominio | Puede usar un prefijo binario exacto, pero cada byte, longitud y relación con mechanism_version debe congelarse. |
-| Tamaño | Potencialmente el menor, especialmente con posiciones fijas; TLV añade overhead controlado. |
-| Bibliotecas | Poca dependencia externa, a cambio de mayor código y responsabilidad propios. |
-| Validación cruzada | Exige una segunda implementación o herramienta independiente y vectores exhaustivos para evitar que el codec se valide a sí mismo. |
+Su riesgo dominante es aceptar opciones CBOR no cerradas o utilizar un decoder
+que pierda duplicados o no canonicalidad. La propuesta concreta se define en
+`Perfil candidato finalista`. La clasificación es técnica, no vinculante y puede
+cambiar mientras ADR-001 siga `DRAFT`.
 
-### Ventajas, desventajas y consecuencias
+### Alternativa C — Perfil JCS restringido
 
-- Ventajas: control completo, tamaño predecible y trazas hexadecimales simples.
-- Desventajas: framing inventado, mayor superficie de errores y menor
-  interoperabilidad disponible de antemano.
-- Consecuencia de una futura selección: documentar cada byte, crear al menos dos
-  implementaciones independientes y congelar todos los límites antes de
-  implementar MEC-A1.
+**Alternativa evaluada no finalista.** JCS aporta texto legible, serialización
+UTF-8 y orden recursivo determinista, pero JSON no posee un tipo entero separado
+y JCS serializa JSON number conforme a binary64. El rango int64 completo exige
+convenciones adicionales, como cadenas decimales con gramática cerrada o una
+selección por campo entre número seguro y cadena.
 
-## Alternativa B — Perfil CBOR determinista restringido
+C conserva ventajas de legibilidad y disponibilidad de parsers. Sus riesgos
+dominantes son pérdida numérica, aceptación de propiedades duplicadas y
+convenciones textuales adicionales para int64, tiempo e identificadores. Debido
+a esas convenciones para int64 y JSON number permanece evaluada, pero no se
+producirán sus bytes candidatos completos en la siguiente etapa.
 
-Perfil PT2 construido sobre RFC 8949 y sus requisitos de codificación
-determinista. La alternativa usaría longitudes definidas y representaciones
-mínimas, pero todavía debe decidir un modelo específico y más estrecho que el
-modelo genérico de CBOR.
+### Comparación resumida
 
-No se aprueba en este expediente que la estructura externa sea array o mapa, que
-use un tag, ni un conjunto concreto de claves. Esas elecciones pertenecen a la
-decisión posterior del investigador.
-
-### Restricciones que requeriría el perfil
-
-- usar longitudes definidas y prohibir elementos de longitud indefinida;
-- limitar enteros al rango exacto requerido y exigir su representación mínima;
-- si se usan mapas, fijar los tipos de clave, prohibir duplicados y aplicar el
-  orden determinista elegido conforme a RFC 8949;
-- aprobar o prohibir tags de forma exhaustiva, incluida su posición;
-- prohibir coma flotante si el modelo PT2 no la necesita;
-- fijar si la estructura externa es cerrada o extensible y cómo se rechazan
-  elementos desconocidos;
-- distinguir validez CBOR, pertenencia al perfil y codificación determinista;
-- decidir si una entrada CBOR válida pero no determinista se rechaza directamente
-  o se decodifica y recodifica solo para diagnóstico, nunca de forma implícita.
-
-### Órdenes deterministas de mapas pendientes
-
-RFC 8949 contempla dos órdenes que deben distinguirse porque pueden producir
-bytes diferentes para el mismo conjunto de pares:
-
-1. **Core deterministic encoding:** las claves se ordenan lexicográficamente,
-   byte a byte, por sus codificaciones deterministas.
-2. **Length-first deterministic ordering:** primero se compara la longitud de la
-   codificación determinista de cada clave y, para longitudes iguales, se aplica
-   orden lexicográfico byte a byte.
-
-El perfil PT2 deberá seleccionar exactamente uno. Productor y verificador no
-podrán escogerlo mediante configuración local o valores predeterminados de una
-biblioteca. Ninguno se selecciona en esta versión del ADR. La opción futura
-deberá formar parte de la versión del perfil y de sus vectores normativos,
-incluidos casos donde ambos órdenes diverjan.
-
-### Evaluación por dimensión
-
-| Dimensión | Análisis del perfil CBOR determinista restringido |
-|---|---|
-| Inyectividad práctica | Alta si cada valor lógico tiene un solo tipo y una sola estructura; permitir tags opcionales o tipos equivalentes reintroduce ambigüedad. |
-| Determinismo | RFC 8949 aporta formas mínimas y longitudes definidas, pero el perfil debe seleccionar core deterministic o length-first; no son equivalentes en bytes. |
-| Independencia de lenguaje | Buena en el nivel de bytes, pero debe probarse que cada biblioteca expone enteros, duplicados, tags y errores sin pérdidas. |
-| Vectores byte a byte | Adecuados y compactos; pueden contrastarse con herramientas CBOR independientes. |
-| Complejidad del verificador | Menor que un framing propio si la biblioteca permite validar el perfil; aumenta si decodifica antes de detectar duplicados o no canonicalidad. |
-| Tipos admitidos | CBOR ofrece más tipos de los necesarios; el perfil debe permitir una lista cerrada. |
-| Rechazo no canónico | Debe detectarse representación no mínima, longitud indefinida, orden inválido, tags no permitidos, duplicados y tipos fuera del perfil. |
-| Enteros de 64 bits | Soporte binario nativo suficiente para los rangos PT2; deben limitarse al rango con signo requerido y rechazarse bignums o valores fuera de rango. |
-| Tiempo | Puede ser entero o texto, con o sin tag; el perfil debe escoger exactamente una representación y unidad. |
-| UUID | Puede ser bytes, texto o valor etiquetado; solo una opción podría quedar permitida. |
-| Unicode | Las cadenas de texto son Unicode codificado en UTF-8; normalización y rechazo de secuencias inválidas deben fijarse en el perfil. |
-| Objetos y listas | Mapas y arrays son nativos; deben limitarse claves, profundidad, cardinalidad y tipos recursivos. |
-| Campos duplicados | Los mapas no admiten claves duplicadas en el modelo; el decoder elegido debe detectarlas antes de perder entradas. |
-| Nulos | CBOR dispone de null, pero el perfil debe permitirlo o prohibirlo por posición. |
-| Coma flotante | CBOR la admite en varias precisiones; puede y probablemente debe excluirse si no existe una necesidad aprobada. |
-| Versionado | Puede ser un campo de la estructura; su posición, tipo y rechazo de versiones desconocidas siguen pendientes. |
-| Separación de dominio | Puede ser un campo o prefijo exterior, pero deben aprobarse sus bytes exactos y evitar dos representaciones equivalentes. |
-| Tamaño | Generalmente compacto, con overhead dependiente de array, mapa, claves y tags que aún no se han seleccionado. |
-| Bibliotecas | Existen implementaciones múltiples; deben evaluarse modo determinista, preservación de enteros y capacidad de rechazo estricto. |
-| Validación cruzada | Favorable mediante dos bibliotecas o lenguajes, más comparación de bytes y casos negativos no canónicos. |
-
-### Ventajas, desventajas y consecuencias
-
-- Ventajas: soporte binario nativo para enteros, representación compacta, reglas
-  deterministas estandarizadas y capacidad de excluir tipos innecesarios.
-- Desventajas: el modelo general conserva opciones; algunas bibliotecas aceptan
-  formas no deterministas o pierden duplicados antes de que la aplicación pueda
-  rechazarlos.
-- Consecuencia de una futura selección: publicar un perfil PT2 cerrado, probar
-  interoperabilidad entre implementaciones y especificar la conducta exacta ante
-  CBOR válido pero fuera del perfil o no determinista.
-
-## Alternativa C — Perfil JCS restringido
-
-Perfil PT2 basado en RFC 8785. JCS canonicaliza datos del subconjunto I-JSON,
-ordena propiedades recursivamente, serializa sin espacios y emite UTF-8. El
-perfil PT2 todavía tendría que restringir el modelo lógico y resolver los tipos
-que JSON no representa directamente.
-
-### Restricciones que requeriría el perfil
-
-- exigir entrada compatible con I-JSON y nombres de propiedad no duplicados;
-- fijar el conjunto de propiedades y la estructura externa;
-- distinguir valores numéricos no integrales, valores integrales representados
-  como JSON number y enteros representados mediante cadenas decimales;
-- definir por campo si JSON number está prohibido o admitido y, cuando se admita,
-  fijar su rango entero exacto;
-- prohibir valores numéricos no integrales en todo campo lógico entero;
-- representar sin pérdida los campos que requieran el rango completo int64;
-- fijar timestamp, UUID, nulos, listas, objetos, límites y versiones;
-- decidir si una entrada JSON sintácticamente válida pero no canónica se
-  rechaza o se canonicaliza desde un valor lógico previamente validado.
-
-### Semántica numérica pendiente
-
-JSON y JCS no poseen un tipo entero independiente del tipo JSON number. JCS
-serializa los valores JSON number conforme a IEEE 754 binary64. Por ello, decir
-solamente “prohibir coma flotante” sería ambiguo: debe declararse si se prohíben
-los valores no integrales, si se admite el tipo JSON number para un campo y cuál
-es su rango exacto.
-
-Los campos que requieran el rango completo int64 no pueden depender de una
-conversión con pérdida a binary64. Se registran dos subalternativas pendientes:
-
-#### JCS-N1 — Todos los int64 como cadenas
-
-Todos los campos lógicos int64 se representarían mediante cadenas decimales con
-gramática canónica cerrada. La futura gramática deberá definir signo, cero,
-ceros iniciales, mínimo, máximo, overflow y ausencia de espacios; deberá prohibir
-exponentes y el signo positivo redundante.
-
-#### JCS-N2 — JSON number solo dentro de un rango seguro aprobado
-
-JSON number se permitiría únicamente para campos cuyo rango normativo completo
-quede dentro del rango entero seguro que se apruebe. Los campos que requieran el
-rango completo int64 permanecerían siempre como cadenas decimales canónicas.
-
-Un mismo campo no podrá ser JSON number para algunos valores y cadena para otros.
-La elección será por campo y versión, no por la magnitud observada durante la
-ejecución. JCS-N1 y JCS-N2 continúan pendientes; ninguna está seleccionada.
-
-### Política Unicode pendiente y punto de aplicación
-
-JCS preserva las cadenas Unicode sin normalizarlas y su serializador no debe
-transformar el contenido. Si PT2 seleccionara normalización Unicode, esta
-ocurriría antes de fijar el valor lógico entregado a JCS. El valor posterior a
-esa transformación sería el valor autenticado. Productor y verificador no
-pueden aplicar normalización implícita durante serialización o verificación.
-
-Permanecen sin selección tres políticas:
-
-1. preservar toda secuencia Unicode válida;
-2. exigir una forma normalizada y rechazar entradas que no la cumplan;
-3. normalizar en una etapa previa y autenticar el resultado transformado.
-
-### Evaluación por dimensión
-
-| Dimensión | Análisis del perfil JCS restringido |
-|---|---|
-| Inyectividad práctica | Alta para un modelo cerrado si cada valor tiene un solo tipo; cae si un entero puede ser número o cadena, o si ausencia y null son equivalentes. |
-| Determinismo | JCS fija serialización, orden recursivo y UTF-8; el perfil debe fijar el valor lógico de entrada y sus tipos. |
-| Independencia de lenguaje | Buena para strings y estructuras comunes; la serialización numérica y el orden UTF-16 deben verificarse fuera de entornos ECMAScript. |
-| Vectores byte a byte | Legibles y fáciles de difundir; deben comparar los bytes UTF-8, no solo el texto mostrado. |
-| Complejidad del verificador | Bibliotecas JSON son comunes, pero se necesita validación estricta antes de perder duplicados o precisión numérica. |
-| Tipos admitidos | JSON ofrece string, number, boolean, null, object y array; no posee un tipo entero separado. Bytes, UUID, tiempo e int64 requieren convenciones PT2. |
-| Rechazo no canónico | Debe distinguirse JSON inválido, I-JSON inválido, modelo PT2 inválido y texto válido que no coincide con la serialización JCS. |
-| Enteros de 64 bits | JCS-N1 usaría cadenas para todos los int64; JCS-N2 admitiría JSON number solo por campo dentro de un rango seguro aprobado y mantendría como cadenas los campos int64 completos. |
-| Tiempo | Normalmente sería texto o entero representado como cadena; formato, zona, precisión y unidad deben congelarse. |
-| UUID | Normalmente texto; deben fijarse forma, guiones, mayúsculas y variantes admitidas. |
-| Unicode | JCS preserva cadenas sin normalización. PT2 debe escoger preservación, rechazo de formas no normalizadas o transformación previa; nunca normalización implícita dentro de JCS. |
-| Objetos y listas | Son nativos; las propiedades se ordenan recursivamente y el orden de listas se conserva. |
-| Campos duplicados | I-JSON los prohíbe; el parser debe detectarlos antes de construir un objeto que descarte uno. |
-| Nulos | JSON los admite; el perfil debe decidir posiciones permitidas y distinguir null de ausencia. |
-| Valores no integrales y JSON number | JCS serializa JSON number mediante binary64. El perfil debe prohibir valores no integrales en campos enteros y decidir por campo si admite JSON number y dentro de qué rango exacto. |
-| Versionado | Puede ser una propiedad textual o numérica segura; nombre, tipo y versiones admitidas quedan pendientes. |
-| Separación de dominio | Requiere una propiedad o framing exterior inequívoco; los bytes exactos no se deducen de JCS. |
-| Tamaño | Mayor por nombres, comillas y números textuales; mejora legibilidad y diagnóstico. |
-| Bibliotecas | Amplia disponibilidad, pero no todas implementan JCS ni exponen duplicados y precisión de forma segura. |
-| Validación cruzada | Posible con implementaciones JCS de lenguajes distintos y comparación de UTF-8; debe incluir claves Unicode y límites numéricos. |
-
-### Ventajas, desventajas y consecuencias
-
-- Ventajas: legibilidad, ecosistema JSON amplio y orden determinista
-  estandarizado.
-- Desventajas: limitación numérica I-JSON, mayor tamaño y necesidad de perfilar
-  int64, UUID y tiempo como convenciones textuales.
-- Consecuencia de una futura selección: congelar gramáticas textuales y demostrar
-  que parsers distintos rechazan duplicados, Unicode inválido y números fuera
-  del perfil antes de autenticar.
-
-## Comparación resumida
-
-| Aspecto | A — Binario propio | B — CBOR restringido | C — JCS restringido |
+| Dimensión | A — Binario propio | B — CBOR restringido | C — JCS restringido |
 |---|---|---|---|
-| Framing inventado | Alto | Bajo a medio | Bajo, salvo dominio y convenciones PT2 |
-| Enteros de 64 bits | Naturales | Naturales | JCS-N1 o JCS-N2 pendientes; int64 completo sin conversión con pérdida |
-| Tamaño esperado | Menor | Compacto | Mayor |
-| Legibilidad humana | Baja | Baja a media con diagnóstico | Alta |
-| Rechazo estricto | Totalmente propio | Depende del perfil y decoder | Depende del parser, I-JSON y perfil |
-| Validación cruzada | Requiere crear segunda implementación | Buen soporte potencial | Buen soporte potencial |
-| Riesgo dominante | Errores de framing propio | Opciones CBOR no cerradas | Pérdida numérica o textual no perfilada |
+| Inyectividad | Depende totalmente del framing PT2 | Alta con modelo y tipos cerrados | Alta si cada campo tiene un único tipo |
+| Determinismo | Debe especificarse por completo | Formas mínimas y orden CBOR seleccionado | JCS fija serialización; PT2 fija tipos |
+| Independencia de lenguaje | Posible, con control manual de overflow | Buena, sujeta a decoders estrictos | Buena, sujeta a precisión y orden JCS |
+| Vectores | Directos, pero requieren codec propio independiente | Compactos y contrastables entre bibliotecas | Legibles; deben compararse bytes UTF-8 |
+| Verificador | Parser y validación propios | Biblioteca más validación estricta del perfil | Parser I-JSON más validación PT2 |
+| int64 | Natural si se congelan ancho y signo | Natural dentro de rangos cerrados | Requiere convención fuera de binary64 seguro |
+| Tiempo | Entero o texto propio por definir | Entero candidato sin tag | Convención numérica o textual adicional |
+| Identificador | Bytes o texto propio por definir | Byte string candidato de 16 octetos | Convención textual adicional |
+| Unicode | UTF-8 y política totalmente propias | UTF-8 con política explícita | JCS preserva texto; parser debe ser estricto |
+| Estructuras | Gramática recursiva propia | Arrays y mapas nativos restringidos | Arrays y objetos nativos restringidos |
+| Duplicados | Rechazo implementado por PT2 | Decoder debe detectarlos antes de perderlos | Parser debe detectarlos antes de perderlos |
+| Null y float | Decisión y tags propios | Excluidos por el candidato | JSON los admite; el perfil tendría que cerrarlos |
+| Versionado y dominio | Cabecera o framing propios | Posiciones exteriores candidatas fijas | Propiedad o framing exterior adicional |
+| Tamaño | Potencialmente menor | Compacto | Generalmente mayor |
+| Bibliotecas | Poca dependencia, más código propio | Varias implementaciones disponibles | Ecosistema amplio, JCS no siempre disponible |
+| Validación cruzada | Requiere crearla | Favorable entre bibliotecas o lenguajes | Posible entre implementaciones JCS |
 
-Esta tabla no asigna ganador ni equivale a una aprobación.
+B pasa a ser el único finalista propuesto. A y C permanecen como alternativas
+conceptualmente evaluadas no finalistas. La clasificación puede modificarse
+mientras ADR-001 siga `DRAFT`, no equivale a aprobación del investigador y no
+convierte futuros bytes en normativos.
 
-## Decisiones ortogonales pendientes
+## Perfil candidato finalista
 
-Cada fila requiere una resolución expresa, cualquiera sea el formato base.
+> **CANDIDATO NO NORMATIVO**
 
-| Decisión | Alternativas concretas pendientes | Consecuencia que deberá congelarse |
-|---|---|---|
-| 1. Nombre normativo del payload y de los bytes autenticados | canonical_payload; canonicalPayload; record_payload_v1 y authenticated_record_bytes_v1 como nombres separados | Unificar documentos futuros sin confundir valor lógico con serialización. |
-| 2. ledger_id | 16 bytes UUID; texto UUID canónico; identificador opaco con longitud prefijada | Fijar variante, longitud, orden de bytes, mayúsculas y rechazo. |
-| 3. occurred_at | entero desde epoch; texto UTC de gramática cerrada | Fijar zona, precisión, rango, redondeo y segundos intercalares. |
-| 4. Unidad temporal | segundos; milisegundos; microsegundos; nanosegundos | Una sola unidad, rango y conversión normativa, sin inferencia por magnitud. |
-| 5. Política Unicode | preservar toda secuencia válida; exigir una forma normalizada y rechazar las demás; normalizar antes de fijar el valor lógico y autenticar el resultado | Fijar versión y punto de validación; productor y verificador no normalizan implícitamente durante serialización o verificación. |
-| 6. Tipos dentro de payload | conjunto cerrado de string, int64, boolean, objeto y lista; añadir null; añadir bytes | Enumerar tipos, recursión, coerciones prohibidas y posiciones válidas. |
-| 7. Límites máximos | límites globales; límites por campo; combinación de ambos | Fijar bytes, caracteres, elementos, profundidad y conducta ante exceso. |
-| 8. Estructura fija o extensible | estructura cerrada por versión; extensiones solo con nueva versión; campos desconocidos ignorables pero autenticados | Determinar orden, campos desconocidos y compatibilidad; ignorar no puede cambiar los bytes autenticados. |
-| 9. Bytes de separación de dominio | prefijo literal con longitud; identificador binario versionado; campo obligatorio dentro de la estructura | Publicar bytes exactos, framing, relación con mechanism_version y prohibición de selección en ejecución. |
-| 10. Responsabilidad de continuidad | MEC-A1 solo autentica sequence; MEC-A1 valida cuando recibe contexto; política común separada valida continuidad | Declarar quién detecta inicio, huecos, duplicados y reordenamiento. |
-| 11. INVALID_SEQUENCE_CONTEXT | contexto ausente; valor incompatible con el predecesor; categoría estable con detalle estructurado | Separarlo de INVALID_TAG y definir precondiciones y detalle sin crear estados arbitrarios. |
-| 12. Codificación válida pero no determinista | rechazo inmediato; decodificación y comparación con recodificación para diagnosticar, seguida de rechazo | Nunca aceptar silenciosamente dos bytes para el mismo valor ni autenticar después de una normalización implícita. |
+El identificador exacto del perfil propuesto es
+`PT2-CBOR-AUTH-RECORD-CANDIDATE-v1`. Todas las reglas de esta sección son
+candidatas, no aprobadas y sujetas a cambio.
 
-## Plan de vectores requerido antes de aprobación
+### Nombres candidatos y modelo lógico
 
-### 1. Vectores candidatos de evaluación
+- `record_payload_v1`: valor lógico formado por `event_type`, `occurred_at`,
+  `operator_id`, `amount_cents` y `payload`;
+- `authenticated_record_bytes_v1`: secuencia de bytes producida por la
+  codificación candidata del array exterior completo.
 
-Antes de la aprobación podrán generarse, para cada perfil candidato:
+Los nombres siguen siendo candidatos. El primero designa un valor lógico; el
+segundo, el mensaje autenticado exterior completo. No son sinónimos.
 
-- valor lógico de entrada;
-- contexto;
-- resultado esperado;
-- bytes candidatos exactos;
-- representación hexadecimal;
-- autenticador candidato, cuando sea necesario para probar el comportamiento;
-- identificador y versión del perfil candidato;
-- herramienta o implementación que produjo el resultado.
+### Estructura exterior cerrada
 
-Cada elemento deberá marcarse explícitamente como **CANDIDATO NO NORMATIVO**.
-Los bytes candidatos pueden cambiar mientras el perfil permanezca DRAFT, no
-autorizan implementación productiva, no constituyen el mensaje normativo de
-MEC-A1 y no pueden presentarse como evidencia de conformidad con una versión
-aprobada.
+`authenticated_record_bytes_v1` se propone como la codificación CBOR de un
+array de longitud exacta 10, nunca como un mapa exterior:
 
-Los siguientes veinte casos forman el plan de evaluación. Su presencia no fija
-todavía bytes, resultados ni condiciones de rechazo normativas:
+| Posición | Elemento |
+|---:|---|
+| 0 | `domain` |
+| 1 | `schema_version` |
+| 2 | `mechanism_version` |
+| 3 | `ledger_id` |
+| 4 | `sequence` |
+| 5 | `event_type` |
+| 6 | `occurred_at` |
+| 7 | `operator_id` |
+| 8 | `amount_cents` |
+| 9 | `payload` |
+
+No se permiten campos adicionales, posiciones ausentes ni arrays de longitud
+distinta. Productor y verificador no ignoran elementos exteriores desconocidos.
+Cualquier extensión requiere una nueva `schema_version` o una nueva versión del
+perfil. Los elementos de `payload` siempre quedan autenticados aunque su
+semántica sea validada por el schema. Esta tarea no genera los bytes CBOR del
+array.
+
+### Separación de dominio candidata
+
+La posición 0 es un CBOR text string cuyo contenido ASCII exacto es:
+
+`PT2:MEC-A1:HMAC-SHA-256:RECORD:v1`
+
+Se codifica como UTF-8, sin terminador NUL y sin espacios. No se selecciona
+durante ejecución y se relaciona de forma fija con `mechanism_version = 1`.
+El literal continúa como **CANDIDATO NO NORMATIVO**.
+
+### Tipos y rangos exteriores candidatos
+
+| Campo | Tipo y restricciones candidatas |
+|---|---|
+| `schema_version` | Entero CBOR no negativo, valor inicial 1 y representación mínima. Se rechaza otro valor mientras el perfil sea v1. |
+| `mechanism_version` | Entero CBOR no negativo, valor inicial 1 y representación mínima. Se rechaza otro valor mientras el perfil sea v1. |
+| `ledger_id` | CBOR byte string de exactamente 16 octetos, identificador binario opaco. No admite texto alternativo ni tags. |
+| `sequence` | Entero CBOR positivo en `1..2^63-1`, con representación mínima. Cero y negativos son inválidos. |
+| `event_type` | CBOR text string no vacío de 1 a 64 octetos UTF-8. Su enumeración pertenece al schema. |
+| `occurred_at` | Entero CBOR en `0..253402300799999`, milisegundos UTC desde Unix epoch. No admite texto ni tag temporal. |
+| `operator_id` | CBOR text string no vacío de hasta 128 octetos UTF-8. |
+| `amount_cents` | Entero con signo en `-9223372036854775808..9223372036854775807`, con representación mínima. Prohibidos float y texto. |
+| `payload` | CBOR map sujeto al modelo recursivo y límites siguientes. |
+
+La unidad de `occurred_at` no se infiere por magnitud. No se redondea ni trunca
+silenciosamente: el valor lógico debe llegar ya expresado en milisegundos
+enteros.
+
+### Payload candidato
+
+Las claves de todo map son CBOR text string no vacíos de hasta 128 octetos
+UTF-8, únicas y sin normalización implícita. La codificación no decide qué
+nombres de aplicación son válidos; esa validación pertenece a
+`schema_version`.
+
+Los valores permitidos recursivamente son:
+
+- text string;
+- int64;
+- boolean;
+- array;
+- map con claves textuales.
+
+Se permiten cadenas, arrays y mapas vacíos cuando el schema lo permita. Se
+prohíben `null`, `undefined`, float, byte string, tags, bignums, simple values
+distintos de boolean y claves no textuales. No se permiten coerciones entre
+tipos.
+
+### Política Unicode candidata
+
+El perfil preserva la secuencia de valores escalares Unicode y la codifica como
+UTF-8 sin normalización. Rechaza UTF-8 inválido y sustitutos aislados. Considera
+distintas U+00E9 y la secuencia U+0065 U+0301, aunque sean visualmente
+similares. Productor y verificador no transforman silenciosamente el texto.
+Esta es una decisión candidata, no aprobada.
+
+### Reglas CBOR deterministas candidatas
+
+- todas las longitudes son definidas;
+- enteros y longitudes usan representación mínima;
+- tags, bignums y coma flotante están prohibidos;
+- los mapas tienen claves únicas, detectadas antes de perder entradas;
+- todo map dentro de `payload` usa `core deterministic encoding`: sus claves se
+  ordenan lexicográficamente, byte a byte, por sus codificaciones deterministas;
+- `length-first deterministic ordering` no pertenece al perfil;
+- no se permiten bytes sobrantes después del único elemento exterior;
+- profundidad, cardinalidades, longitudes y tamaño total se comprueban antes de
+  aceptar el registro.
+
+El array exterior tiene orden posicional y no requiere orden de mapa.
+
+### Límites candidatos
+
+| Límite | Valor candidato |
+|---|---:|
+| Tamaño máximo de `authenticated_record_bytes_v1` | 65536 octetos |
+| Profundidad máxima dentro de `payload` | 8 |
+| Elementos máximos por array | 256 |
+| Pares máximos por map | 256 |
+| Text string general | 16384 octetos UTF-8 |
+| Clave de map | 128 octetos UTF-8 |
+| `event_type` | 64 octetos UTF-8 |
+| `operator_id` | 128 octetos UTF-8 |
+
+La raíz map de `payload` tiene profundidad 1; cada array o map anidado incrementa
+la profundidad en uno y los escalares no la incrementan. Los límites se cuentan
+en octetos UTF-8 o elementos según corresponda, nunca en unidades dependientes
+del lenguaje. Son límites candidatos sujetos a validación con datos reales del
+benchmark.
+
+### Entrada fuera del perfil o no determinista
+
+Una codificación CBOR válida pero fuera del perfil o no determinista se rechaza;
+no se normaliza para aceptarla silenciosamente. Puede recodificarse solo para
+diagnóstico. La aceptación exige coincidencia byte a byte con la recodificación
+determinista candidata.
+
+El rechazo usa el estado superior existente `MALFORMED_RECORD` y el detalle
+estable `NON_CANONICAL_ENCODING`. No se añade un estado superior nuevo.
+
+## Semántica secuencial candidata
+
+`sequence` se autentica dentro del array, pero MEC-A1 no determina por sí mismo
+continuidad ni extremo terminal. Una política común separada compara el valor
+autenticado con un contexto explícito.
+
+- si no se proporciona contexto, su ausencia no produce automáticamente
+  `INVALID_SEQUENCE_CONTEXT`;
+- si se proporciona contexto y el valor autenticado es incompatible, el
+  resultado es `INVALID_SEQUENCE_CONTEXT`;
+- `INVALID_SEQUENCE_CONTEXT` solo se evalúa después de que formato, versión y
+  tag sean válidos;
+- `VALID` no implica frescura terminal ni ausencia de rollback.
+
+La propuesta no modifica ADR-004.
+
+## Relación con ADR-002
+
+`key_id` y el alcance de la clave no se añaden todavía a los bytes candidatos.
+Su semántica permanece en ADR-002. ADR-001 no desbloquea MEC-A1 por sí sola.
+Cualquier futura decisión de autenticar `key_id` deberá reconciliar ADR-001 y
+ADR-002 antes de aprobar bytes normativos.
+
+## Plan de vectores previo a una posible aprobación
+
+Después de que el investigador acepte esta propuesta para experimentación, una
+tarea futura podrá producir para el único perfil finalista valores lógicos,
+contextos, resultados esperados, bytes y hexadecimal candidatos, autenticadores
+cuando sean necesarios, versión del perfil y herramienta productora. Cada
+artefacto deberá marcarse **CANDIDATO NO NORMATIVO**.
+
+A y C conservan los criterios y casos conceptuales que justifican su
+clasificación, pero no requieren codificaciones byte a byte. Los veinte casos
+previstos para B son:
 
 | Vector | Propósito mínimo |
 |---|---|
-| Registro mínimo válido | Cubrir todos los campos obligatorios en sus valores mínimos permitidos. |
-| Unicode multibyte | Probar UTF-8, orden y política Unicode con caracteres fuera de ASCII. |
-| Cadenas vacías | Distinguir cadena vacía, ausencia y null. |
-| Límites de enteros | Cubrir mínimo y máximo de int64, cero, negativos permitidos y primer valor fuera de rango. |
-| UUID | Probar una representación válida y variantes de texto o bytes que deban rechazarse. |
-| Timestamp | Probar instante válido, precisión, zona y límites de la unidad seleccionada. |
-| Objeto anidado | Probar orden, profundidad y duplicados en un nivel interno. |
-| Lista | Probar preservación de orden, lista vacía y tipos de elementos. |
-| Orden alternativo de mapa | Demostrar el mismo valor lógico y exigir los bytes deterministas o el rechazo de entrada no canónica. |
-| Orden CBOR divergente | Usar las claves enteras 100 y -1, cuyas posiciones relativas difieren entre core deterministic y length-first, para detectar una implementación que aplique el orden contrario al futuro perfil. |
-| Campo duplicado | Demostrar rechazo antes de que el parser descarte una ocurrencia. |
-| Longitud no mínima | Demostrar rechazo de framing o CBOR más largo que la representación admitida. |
-| Truncamiento | Cubrir cortes en cabecera, longitud, valor multibyte y estructura anidada. |
-| Overflow | Cubrir longitud, entero, contador y cálculo de tamaño fuera de rango. |
-| Valores numéricos fuera del perfil | Para JCS, distinguir valor no integral, JSON number integral fuera del rango y cadena decimal inválida; para perfiles binarios, cubrir tipos flotantes prohibidos, cero negativo, NaN e infinito cuando sean representables. |
-| Unicode inválido | Rechazar UTF-8 inválido, sustitutos aislados u otra secuencia prohibida por el perfil. |
-| Unicode normalizado y no normalizado | Usar U+00E9 y la secuencia U+0065 U+0301 como formas visualmente equivalentes para demostrar preservación, rechazo o transformación previa, sin fijar aún cuál será el resultado normativo. |
+| Registro mínimo válido | Cubrir todos los campos obligatorios en mínimos permitidos. |
+| Unicode multibyte | Probar UTF-8 y la política Unicode fuera de ASCII. |
+| Cadenas vacías | Distinguir cadenas permitidas en payload de campos exteriores no vacíos, ausencia y null. |
+| Límites de enteros | Cubrir int64 mínimo y máximo, cero, negativos permitidos y valores fuera de rango. |
+| Identificador binario | Probar `ledger_id` de 16 octetos y rechazar longitudes o tipos alternativos. |
+| Timestamp | Probar unidad, límites y prohibición de inferencia, redondeo o tags. |
+| Mapa anidado | Probar orden, profundidad, cardinalidad y duplicados internos. |
+| Array | Probar orden, array vacío y tipos de elementos. |
+| Orden alternativo de map | Exigir core deterministic o rechazar la entrada no canónica. |
+| Orden CBOR divergente | Diagnosticar core frente a length-first; claves CBOR 100 y -1 pueden distinguir bibliotecas, pero ese objeto se rechaza porque el perfil exige claves textuales. |
+| Clave duplicada | Rechazar antes de que el decoder descarte una ocurrencia. |
+| Longitud no mínima | Rechazar longitudes o enteros con representación no mínima. |
+| Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento. |
+| Overflow | Cubrir longitudes, enteros, contadores y cálculos de tamaño fuera de rango. |
+| Valores numéricos prohibidos | Rechazar float, cero negativo flotante, NaN, infinito, bignum y texto numérico donde corresponda. |
+| Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados. |
+| Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
 | Versión desconocida | Rechazar sin interpretar el resto con reglas de otra versión. |
-| Ambigüedad número/cadena JCS | Demostrar que un campo int64 no acepta alternativamente 42 y "42" como representaciones del mismo campo lógico; el tipo quedará fijado por campo y versión. |
-| Contexto secuencial inválido con tag válido | Demostrar que el valor sequence fue autenticado, pero falla continuidad mediante INVALID_SEQUENCE_CONTEXT y no INVALID_TAG. |
+| Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
+| Contexto secuencial inválido con tag válido | Producir `INVALID_SEQUENCE_CONTEXT`, no `INVALID_TAG`, después de validar formato, versión y tag. |
 
-### 2. Validación previa a la aprobación
+Antes de solicitar aprobación deberán existir bytes candidatos completos y
+hexadecimal para B, resultados coincidentes de dos codificadores o herramientas
+independientes, casos positivos y negativos, evidencia de rechazo estricto y la
+versión exacta del perfil. Mientras ADR-001 sea `DRAFT`, esos artefactos no serán
+normativos ni pruebas de conformidad aprobadas.
 
-Antes de solicitar la aprobación del investigador, el expediente deberá disponer
-de:
+Solo después de una aprobación expresa se podrán congelar vectores normativos,
+resultados, límites y condiciones de rechazo.
 
-- bytes candidatos completos para las alternativas finalistas;
-- representación hexadecimal de todos los bytes candidatos;
-- resultados coincidentes de al menos dos implementaciones, herramientas o
-  codificadores de referencia independientes;
-- vectores positivos y negativos;
-- evidencia de rechazo de duplicados y formas no deterministas;
-- versión exacta de cada perfil candidato;
-- diferencias explícitas entre alternativas cuando produzcan bytes distintos.
+## Secuencia de trabajo posterior
 
-Esta validación es necesaria para que el investigador pueda comparar resultados
-concretos y aprobar posteriormente una decisión informada. Los artefactos siguen
-siendo **CANDIDATOS NO NORMATIVOS** durante esta etapa.
+1. El investigador acepta el perfil candidato como base para experimentación,
+   sin cambiar ADR-001 a `APPROVED`.
+2. Una tarea posterior implementa dos codificadores de referencia
+   independientes.
+3. Esa tarea produce los 20 vectores candidatos.
+4. Se comparan bytes y rechazos.
+5. Se revisan los límites con datos reales.
+6. Se corrige el perfil candidato cuando sea necesario.
+7. Se presenta al investigador una versión aprobable.
+8. Solo después se congelan vectores normativos y se modifican los documentos
+   afectados mediante tareas autorizadas.
 
-### 3. Vectores normativos
+Esta tarea documental no autoriza todavía esos codificadores ni produce bytes o
+vectores. La futura autorización queda condicionada a que el investigador
+acepte primero la propuesta para experimentación.
 
-Solo después de que el investigador apruebe una versión concreta del perfil:
-
-- se congelarán los bytes definitivos;
-- se les asignará carácter normativo;
-- se congelarán resultados, límites y condiciones de rechazo;
-- los vectores aprobados pasarán a ser pruebas de conformidad;
-- cualquier cambio posterior requerirá una nueva versión.
-
-## Implementaciones de referencia
-
-### Permitido antes de la aprobación
-
-- scripts experimentales;
-- codificadores de referencia;
-- herramientas independientes;
-- prototipos mínimos empleados exclusivamente para producir y comparar vectores
-  candidatos.
-
-### No autorizado todavía
+Continúa sin autorización:
 
 - implementación productiva de MEC-A1;
 - integración del perfil en el flujo del POS;
-- schema normativo;
-- API normativa;
+- schema o API normativos;
 - desbloqueo de MEC-A1;
 - uso de bytes candidatos como contrato estable.
 
-Los codificadores de referencia no deben presentarse como implementación de
-MEC-A1 ni como prueba suficiente por sí solos. Esta tarea documental no genera
-bytes candidatos ni normativos y no autoriza crear esas herramientas.
-
 ## Riesgos transversales
 
-- confundir el formato base con el perfil normativo completo;
+- confundir CBOR genérico con el perfil candidato completo;
+- tratar una propuesta `DRAFT` como decisión aprobada;
 - permitir dos tipos o representaciones para el mismo valor lógico;
 - decodificar y recodificar silenciosamente una entrada no determinista;
-- perder campos duplicados dentro de un parser genérico;
-- truncar enteros de 64 bits en una representación IEEE 754;
-- transformar Unicode sin una política aprobada;
-- confundir autenticación de sequence con continuidad o frescura terminal;
-- aprobar un diagrama o nombres sin publicar los bytes;
-- confiar solo en vectores generados por la implementación bajo prueba;
-- autorizar un schema antes de que tipos, límites y estructura estén aprobados.
+- perder claves duplicadas en un parser genérico;
+- truncar int64 o tiempo mediante binary64;
+- transformar Unicode sin autorización;
+- confundir autenticación de `sequence` con continuidad o frescura terminal;
+- validar el codec únicamente contra sí mismo;
+- congelar schema o bytes antes de la aprobación correspondiente.
 
 ## Recomendación técnica no vinculante
 
-Se recomienda evaluar primero la alternativa B, un perfil CBOR determinista
-restringido, por su soporte nativo para enteros, representación binaria, reglas
-deterministas estandarizadas y posibilidad de excluir tipos innecesarios.
+Se propone la alternativa B y
+`PT2-CBOR-AUTH-RECORD-CANDIDATE-v1` como único finalista por su soporte nativo
+para enteros, representación binaria, reglas deterministas estandarizadas y
+capacidad de excluir tipos innecesarios.
 
-La recomendación es provisional y no selecciona ni aprueba:
-
-- estructura externa;
-- array, mapa o claves de mapa;
-- tags;
-- representación o unidad del timestamp;
-- política Unicode;
-- nombre normativo;
-- límites;
-- responsabilidad de continuidad;
-- conducta final ante entradas no deterministas;
-- bytes de separación de dominio;
-- bytes autenticados finales.
-
-La alternativa B deberá compararse con A y C mediante los mismos vectores y
-condiciones de rechazo. Si una biblioteca CBOR no permite validar estrictamente
-el perfil, su disponibilidad no constituye una ventaja suficiente.
+A permanece no finalista por el riesgo y costo de framing propio. C permanece no
+finalista por las convenciones adicionales requeridas para int64 y JSON number.
+La clasificación es provisional, puede cambiar mientras ADR-001 siga `DRAFT`,
+no equivale a aprobación del investigador y no convierte bytes futuros en
+normativos.
 
 ## Decisión del investigador
 
@@ -500,12 +423,17 @@ PENDING
 
 PENDING.
 
-- MEC-A1 continúa BLOCKED.
-- ADR-002 continúa siendo necesaria para alcance y provisión de claves.
+- ADR-001 continúa `DRAFT`.
+- MEC-A1 continúa `BLOCKED`.
+- ADR-002 continúa pendiente.
 - No existen bytes autenticados normativos.
-- No se autoriza implementación.
-- No se autoriza schema.
-- No se autoriza vector definitivo.
+- No existe schema normativo.
+- No se autoriza integración productiva.
+- Esta tarea no autoriza todavía codificadores de referencia ni genera
+  vectores.
+- Una tarea futura podrá crear codificadores de referencia y vectores marcados
+  `CANDIDATO NO NORMATIVO` solo si el investigador acepta primero esta propuesta
+  para experimentación.
 - No se modifica la semántica vigente de RQ-01, THR-P1 ni los ataques pendientes.
 
 ## Fuentes técnicas consideradas
@@ -517,23 +445,21 @@ PENDING.
 - RFC 7493 — The I-JSON Message Format — Standards Track:
   https://www.rfc-editor.org/rfc/rfc7493.html
 
-Estas referencias describen candidatos técnicos. No tienen por sí solas estado
-normativo dentro de PT2 y no sustituyen la aprobación expresa del perfil. La
-categoría Standards Track o Informational de un RFC tampoco equivale a una
-aprobación normativa dentro de PT2.
+Las referencias describen candidatos técnicos y no tienen por sí solas estado
+normativo dentro de PT2.
 
 ## Documentos afectados
 
-- docs/03-terminology.md
-- docs/05-record-format.md
-- docs/06-mechanism-specifications.md
+- `docs/03-terminology.md`
+- `docs/05-record-format.md`
+- `docs/06-mechanism-specifications.md`
 - futuros esquemas y vectores de conformidad, únicamente cuando sean autorizados
 
 Los documentos enumerados no se modifican en esta tarea.
 
 ## Identificadores de trazabilidad
 
-- RQ-01
-- MEC-A1
-- THR-P1
-- ADR-001
+- `RQ-01`
+- `MEC-A1`
+- `THR-P1`
+- `ADR-001`
