@@ -171,7 +171,7 @@ candidatas, no aprobadas y sujetas a cambio.
 Los nombres siguen siendo candidatos. El primero designa un valor lógico; el
 segundo, el mensaje autenticado exterior completo. No son sinónimos.
 
-### Estructura exterior cerrada
+### Estructura exterior cerrada y responsabilidades de versionado
 
 `authenticated_record_bytes_v1` se propone como la codificación CBOR de un
 array de longitud exacta 10, nunca como un mapa exterior:
@@ -191,10 +191,25 @@ array de longitud exacta 10, nunca como un mapa exterior:
 
 No se permiten campos adicionales, posiciones ausentes ni arrays de longitud
 distinta. Productor y verificador no ignoran elementos exteriores desconocidos.
-Cualquier extensión requiere una nueva `schema_version` o una nueva versión del
-perfil. Los elementos de `payload` siempre quedan autenticados aunque su
-semántica sea validada por el schema. Esta tarea no genera los bytes CBOR del
-array.
+Los elementos de `payload` siempre quedan autenticados aunque su semántica sea
+validada por el schema. Esta tarea no genera los bytes CBOR del array.
+
+Las responsabilidades candidatas de versionado se separan así:
+
+- `schema_version` gobierna la semántica del registro lógico, incluidos
+  `event_type` y `payload`;
+- la versión del perfil candidato y `mechanism_version` gobiernan el array
+  exterior, `domain`, los tipos exteriores, las reglas CBOR y
+  `authenticated_record_bytes_v1`;
+- `PT2-CBOR-AUTH-RECORD-CANDIDATE-v1` acepta únicamente
+  `schema_version = 1` y `mechanism_version = 1`;
+- modificar el array exterior, sus posiciones, `domain` o las reglas CBOR
+  requiere una nueva versión del perfil y reconciliarla expresamente con
+  `mechanism_version`;
+- una nueva `schema_version` no puede cambiar implícitamente el array exterior;
+- una futura `schema_version` deberá ser admitida expresamente por una nueva
+  revisión del perfil, incluso si conserva la misma forma exterior;
+- no se infiere compatibilidad entre versiones.
 
 ### Separación de dominio candidata
 
@@ -223,6 +238,16 @@ El literal continúa como **CANDIDATO NO NORMATIVO**.
 La unidad de `occurred_at` no se infiere por magnitud. No se redondea ni trunca
 silenciosamente: el valor lógico debe llegar ya expresado en milisegundos
 enteros.
+
+El valor lógico entregado al codec para `ledger_id` es exactamente una secuencia
+opaca de 16 octetos. Cualquier lectura de UUID textual, eliminación de guiones,
+interpretación de campos UUID, elección de endianess o conversión desde una
+clase UUID del lenguaje ocurre antes del codec y no forma parte de
+`authenticated_record_bytes_v1`. Esta propuesta no define una conversión
+normativa desde texto UUID.
+
+El límite candidato `253402300799999` de `occurred_at` corresponde al último
+milisegundo del año 9999 UTC y funciona como límite operacional candidato.
 
 ### Payload candidato
 
@@ -286,15 +311,65 @@ en octetos UTF-8 o elementos según corresponda, nunca en unidades dependientes
 del lenguaje. Son límites candidatos sujetos a validación con datos reales del
 benchmark.
 
-### Entrada fuera del perfil o no determinista
+### Taxonomía candidata de errores de codificación
 
-Una codificación CBOR válida pero fuera del perfil o no determinista se rechaza;
-no se normaliza para aceptarla silenciosamente. Puede recodificarse solo para
-diagnóstico. La aceptación exige coincidencia byte a byte con la recodificación
-determinista candidata.
+Todos los rechazos de esta sección conservan el estado superior existente
+`MALFORMED_RECORD`. Los detalles estables candidatos son:
 
-El rechazo usa el estado superior existente `MALFORMED_RECORD` y el detalle
-estable `NON_CANONICAL_ENCODING`. No se añade un estado superior nuevo.
+#### `MALFORMED_CBOR`
+
+Bytes que no constituyen un elemento CBOR bien formado, incluidos truncamiento,
+cabeceras incompletas, una longitud que excede los bytes disponibles o UTF-8
+inválido dentro de un text string.
+
+#### `DUPLICATE_MAP_KEY`
+
+Claves duplicadas detectadas antes de que el decoder descarte una ocurrencia.
+
+#### `ENCODING_PROFILE_VIOLATION`
+
+CBOR bien formado pero fuera del perfil, incluidos tipo prohibido, tag, bignum,
+float, `null`, byte string dentro de `payload`, clave no textual, array exterior
+de longitud diferente de 10, entero o longitud lógica fuera de rango,
+profundidad o cardinalidad excedida y versión no admitida.
+
+#### `NON_CANONICAL_ENCODING`
+
+Un valor admitido por el perfil que usa bytes no deterministas, incluidos entero
+o longitud con representación no mínima, longitud indefinida, mapas con orden
+incorrecto, bytes sobrantes u otra representación CBOR alternativa del mismo
+valor permitido.
+
+No se crean estados superiores nuevos. Una recodificación se permite solo para
+diagnóstico y nunca convierte una entrada rechazada en aceptada. Cuando se
+valida una representación recibida, la aceptación exige coincidencia byte a
+byte con la recodificación determinista candidata.
+
+### Frontera conceptual entre valores lógicos y bytes recibidos
+
+Esta propuesta distingue dos interfaces conceptuales sin implementar código.
+
+#### `encode_record(logical_record)`
+
+- recibe valores ya tipados;
+- valida rangos y el perfil lógico;
+- produce directamente `authenticated_record_bytes_v1`;
+- productor y verificador usan la misma función determinista;
+- es la ruta aplicable cuando se leen columnas lógicas de SQLite.
+
+#### `validate_encoded_record(raw_bytes)`
+
+- se aplica solo cuando existe un blob CBOR recibido, importado o almacenado;
+- valida CBOR bien formado, duplicados, pertenencia al perfil y determinismo;
+- puede comparar `raw_bytes` con una recodificación determinista;
+- no debe suponerse que esta ruta existe si el sistema solo conserva campos
+  lógicos.
+
+Reconstruir bytes desde campos de SQLite no demuestra que una serialización
+CBOR original fuera canónica. Afirmar que se rechazó una codificación no
+canónica requiere disponer de los bytes originales. Esta tarea no decide si los
+bytes CBOR se almacenarán junto al registro. La distinción no altera HMAC ni
+autoriza implementación.
 
 ## Semántica secuencial candidata
 
@@ -338,21 +413,27 @@ previstos para B son:
 | Cadenas vacías | Distinguir cadenas permitidas en payload de campos exteriores no vacíos, ausencia y null. |
 | Límites de enteros | Cubrir int64 mínimo y máximo, cero, negativos permitidos y valores fuera de rango. |
 | Identificador binario | Probar `ledger_id` de 16 octetos y rechazar longitudes o tipos alternativos. |
-| Timestamp | Probar unidad, límites y prohibición de inferencia, redondeo o tags. |
+| Timestamp | Probar cero, límite superior, primer valor superior, negativo y valor que requeriría redondeo o truncamiento; comprobar unidad, rango y prohibición de inferencia o tags. |
 | Mapa anidado | Probar orden, profundidad, cardinalidad y duplicados internos. |
 | Array | Probar orden, array vacío y tipos de elementos. |
-| Orden alternativo de map | Exigir core deterministic o rechazar la entrada no canónica. |
-| Orden CBOR divergente | Diagnosticar core frente a length-first; claves CBOR 100 y -1 pueden distinguir bibliotecas, pero ese objeto se rechaza porque el perfil exige claves textuales. |
-| Clave duplicada | Rechazar antes de que el decoder descarte una ocurrencia. |
-| Longitud no mínima | Rechazar longitudes o enteros con representación no mínima. |
-| Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento. |
+| Orden determinista de map textual | Usar solo claves textuales permitidas, fijar el valor lógico, exigir los bytes candidatos en core deterministic encoding y verificar coincidencia entre dos codificadores independientes. |
+| Orden textual no determinista | Usar el mismo map y las mismas claves textuales, presentar deliberadamente los pares en otro orden y esperar `MALFORMED_RECORD` con detalle `NON_CANONICAL_ENCODING`. |
+| Clave duplicada | Rechazar antes de que el decoder descarte una ocurrencia con `MALFORMED_RECORD` y detalle `DUPLICATE_MAP_KEY`. |
+| Longitud no mínima | Rechazar longitudes o enteros con representación no mínima mediante `MALFORMED_RECORD` y detalle `NON_CANONICAL_ENCODING`. |
+| Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento mediante `MALFORMED_RECORD` y detalle `MALFORMED_CBOR`. |
 | Overflow | Cubrir longitudes, enteros, contadores y cálculos de tamaño fuera de rango. |
-| Valores numéricos prohibidos | Rechazar float, cero negativo flotante, NaN, infinito, bignum y texto numérico donde corresponda. |
-| Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados. |
+| Valores numéricos prohibidos | Rechazar float, cero negativo flotante, NaN, infinito, bignum y texto numérico donde corresponda mediante `ENCODING_PROFILE_VIOLATION`. |
+| Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados mediante `MALFORMED_CBOR`. |
 | Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
-| Versión desconocida | Rechazar sin interpretar el resto con reglas de otra versión. |
+| Versión desconocida | Rechazar sin inferir compatibilidad ni interpretar el resto con reglas de otra versión mediante `ENCODING_PROFILE_VIOLATION`. |
 | Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
 | Contexto secuencial inválido con tag válido | Producir `INVALID_SEQUENCE_CONTEXT`, no `INVALID_TAG`, después de validar formato, versión y tag. |
+
+Como diagnóstico opcional de configuración de biblioteca puede usarse un map
+CBOR con las claves enteras `100` y `-1` para distinguir core deterministic de
+length-first. Ese diagnóstico está fuera del perfil porque sus claves no son
+textuales, no cuenta entre los veinte vectores y no constituye evidencia de
+conformidad del perfil.
 
 Antes de solicitar aprobación deberán existir bytes candidatos completos y
 hexadecimal para B, resultados coincidentes de dos codificadores o herramientas
