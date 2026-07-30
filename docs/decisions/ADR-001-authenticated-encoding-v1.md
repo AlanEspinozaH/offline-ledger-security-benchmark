@@ -37,9 +37,9 @@ canonicalPayload y canonical_payload.
 
 RFC 8949 define CBOR y sus requisitos de codificación determinista, pero permite
 que cada protocolo construya un modelo específico y determine cómo rechazar
-datos inesperados. RFC 8785 define JCS sobre el subconjunto I-JSON, con
-serialización y orden deterministas. Ninguna referencia se considera seleccionada
-o aprobada por este expediente.
+datos inesperados. RFC 8785 define JCS sobre el subconjunto I-JSON descrito por
+RFC 7493, con serialización y orden deterministas. Ninguna referencia se
+considera seleccionada o aprobada por este expediente.
 
 ## Problema exacto que requiere decisión
 
@@ -173,12 +173,29 @@ decisión posterior del investigador.
 - decidir si una entrada CBOR válida pero no determinista se rechaza directamente
   o se decodifica y recodifica solo para diagnóstico, nunca de forma implícita.
 
+### Órdenes deterministas de mapas pendientes
+
+RFC 8949 contempla dos órdenes que deben distinguirse porque pueden producir
+bytes diferentes para el mismo conjunto de pares:
+
+1. **Core deterministic encoding:** las claves se ordenan lexicográficamente,
+   byte a byte, por sus codificaciones deterministas.
+2. **Length-first deterministic ordering:** primero se compara la longitud de la
+   codificación determinista de cada clave y, para longitudes iguales, se aplica
+   orden lexicográfico byte a byte.
+
+El perfil PT2 deberá seleccionar exactamente uno. Productor y verificador no
+podrán escogerlo mediante configuración local o valores predeterminados de una
+biblioteca. Ninguno se selecciona en esta versión del ADR. La opción futura
+deberá formar parte de la versión del perfil y de sus vectores normativos,
+incluidos casos donde ambos órdenes diverjan.
+
 ### Evaluación por dimensión
 
 | Dimensión | Análisis del perfil CBOR determinista restringido |
 |---|---|
 | Inyectividad práctica | Alta si cada valor lógico tiene un solo tipo y una sola estructura; permitir tags opcionales o tipos equivalentes reintroduce ambigüedad. |
-| Determinismo | RFC 8949 aporta una base: formas mínimas, longitudes definidas y orden de mapas; el perfil debe cerrar consideraciones adicionales. |
+| Determinismo | RFC 8949 aporta formas mínimas y longitudes definidas, pero el perfil debe seleccionar core deterministic o length-first; no son equivalentes en bytes. |
 | Independencia de lenguaje | Buena en el nivel de bytes, pero debe probarse que cada biblioteca expone enteros, duplicados, tags y errores sin pérdidas. |
 | Vectores byte a byte | Adecuados y compactos; pueden contrastarse con herramientas CBOR independientes. |
 | Complejidad del verificador | Menor que un framing propio si la biblioteca permite validar el perfil; aumenta si decodifica antes de detectar duplicados o no canonicalidad. |
@@ -220,19 +237,57 @@ que JSON no representa directamente.
 
 - exigir entrada compatible con I-JSON y nombres de propiedad no duplicados;
 - fijar el conjunto de propiedades y la estructura externa;
-- preservar las cadenas Unicode sin normalización implícita, o justificar una
-  validación previa más restrictiva compatible con la decisión Unicode;
-- prohibir números de coma flotante en el modelo PT2 aunque JCS pueda
-  serializarlos;
-- representar de forma inequívoca los enteros de 64 bits que no sean seguros
-  como números IEEE 754, posiblemente mediante cadenas con gramática cerrada;
+- distinguir valores numéricos no integrales, valores integrales representados
+  como JSON number y enteros representados mediante cadenas decimales;
+- definir por campo si JSON number está prohibido o admitido y, cuando se admita,
+  fijar su rango entero exacto;
+- prohibir valores numéricos no integrales en todo campo lógico entero;
+- representar sin pérdida los campos que requieran el rango completo int64;
 - fijar timestamp, UUID, nulos, listas, objetos, límites y versiones;
 - decidir si una entrada JSON sintácticamente válida pero no canónica se
   rechaza o se canonicaliza desde un valor lógico previamente validado.
 
-Representar enteros como cadenas evita pérdida de precisión, pero cambia su tipo,
-requiere prohibir signo o ceros redundantes según el campo y añade validación. No
-puede asumirse que una cadena decimal sea automáticamente un entero normativo.
+### Semántica numérica pendiente
+
+JSON y JCS no poseen un tipo entero independiente del tipo JSON number. JCS
+serializa los valores JSON number conforme a IEEE 754 binary64. Por ello, decir
+solamente “prohibir coma flotante” sería ambiguo: debe declararse si se prohíben
+los valores no integrales, si se admite el tipo JSON number para un campo y cuál
+es su rango exacto.
+
+Los campos que requieran el rango completo int64 no pueden depender de una
+conversión con pérdida a binary64. Se registran dos subalternativas pendientes:
+
+#### JCS-N1 — Todos los int64 como cadenas
+
+Todos los campos lógicos int64 se representarían mediante cadenas decimales con
+gramática canónica cerrada. La futura gramática deberá definir signo, cero,
+ceros iniciales, mínimo, máximo, overflow y ausencia de espacios; deberá prohibir
+exponentes y el signo positivo redundante.
+
+#### JCS-N2 — JSON number solo dentro de un rango seguro aprobado
+
+JSON number se permitiría únicamente para campos cuyo rango normativo completo
+quede dentro del rango entero seguro que se apruebe. Los campos que requieran el
+rango completo int64 permanecerían siempre como cadenas decimales canónicas.
+
+Un mismo campo no podrá ser JSON number para algunos valores y cadena para otros.
+La elección será por campo y versión, no por la magnitud observada durante la
+ejecución. JCS-N1 y JCS-N2 continúan pendientes; ninguna está seleccionada.
+
+### Política Unicode pendiente y punto de aplicación
+
+JCS preserva las cadenas Unicode sin normalizarlas y su serializador no debe
+transformar el contenido. Si PT2 seleccionara normalización Unicode, esta
+ocurriría antes de fijar el valor lógico entregado a JCS. El valor posterior a
+esa transformación sería el valor autenticado. Productor y verificador no
+pueden aplicar normalización implícita durante serialización o verificación.
+
+Permanecen sin selección tres políticas:
+
+1. preservar toda secuencia Unicode válida;
+2. exigir una forma normalizada y rechazar entradas que no la cumplan;
+3. normalizar en una etapa previa y autenticar el resultado transformado.
 
 ### Evaluación por dimensión
 
@@ -243,16 +298,16 @@ puede asumirse que una cadena decimal sea automáticamente un entero normativo.
 | Independencia de lenguaje | Buena para strings y estructuras comunes; la serialización numérica y el orden UTF-16 deben verificarse fuera de entornos ECMAScript. |
 | Vectores byte a byte | Legibles y fáciles de difundir; deben comparar los bytes UTF-8, no solo el texto mostrado. |
 | Complejidad del verificador | Bibliotecas JSON son comunes, pero se necesita validación estricta antes de perder duplicados o precisión numérica. |
-| Tipos admitidos | JSON ofrece string, number, boolean, null, object y array; bytes, UUID, tiempo e int64 requieren convenciones PT2. |
+| Tipos admitidos | JSON ofrece string, number, boolean, null, object y array; no posee un tipo entero separado. Bytes, UUID, tiempo e int64 requieren convenciones PT2. |
 | Rechazo no canónico | Debe distinguirse JSON inválido, I-JSON inválido, modelo PT2 inválido y texto válido que no coincide con la serialización JCS. |
-| Enteros de 64 bits | Los valores fuera del rango entero seguro de IEEE 754 no deben pasar como JSON number; una cadena decimal cerrada es una opción pendiente. |
+| Enteros de 64 bits | JCS-N1 usaría cadenas para todos los int64; JCS-N2 admitiría JSON number solo por campo dentro de un rango seguro aprobado y mantendría como cadenas los campos int64 completos. |
 | Tiempo | Normalmente sería texto o entero representado como cadena; formato, zona, precisión y unidad deben congelarse. |
 | UUID | Normalmente texto; deben fijarse forma, guiones, mayúsculas y variantes admitidas. |
-| Unicode | JCS preserva datos de cadena sin normalización y ordena claves por unidades UTF-16; PT2 debe decidir si acepta esa política o exige validación previa. |
+| Unicode | JCS preserva cadenas sin normalización. PT2 debe escoger preservación, rechazo de formas no normalizadas o transformación previa; nunca normalización implícita dentro de JCS. |
 | Objetos y listas | Son nativos; las propiedades se ordenan recursivamente y el orden de listas se conserva. |
 | Campos duplicados | I-JSON los prohíbe; el parser debe detectarlos antes de construir un objeto que descarte uno. |
 | Nulos | JSON los admite; el perfil debe decidir posiciones permitidas y distinguir null de ausencia. |
-| Coma flotante | JCS la admite bajo IEEE 754; el perfil PT2 puede prohibirla y debe rechazarla antes de autenticar. |
+| Valores no integrales y JSON number | JCS serializa JSON number mediante binary64. El perfil debe prohibir valores no integrales en campos enteros y decidir por campo si admite JSON number y dentro de qué rango exacto. |
 | Versionado | Puede ser una propiedad textual o numérica segura; nombre, tipo y versiones admitidas quedan pendientes. |
 | Separación de dominio | Requiere una propiedad o framing exterior inequívoco; los bytes exactos no se deducen de JCS. |
 | Tamaño | Mayor por nombres, comillas y números textuales; mejora legibilidad y diagnóstico. |
@@ -274,7 +329,7 @@ puede asumirse que una cadena decimal sea automáticamente un entero normativo.
 | Aspecto | A — Binario propio | B — CBOR restringido | C — JCS restringido |
 |---|---|---|---|
 | Framing inventado | Alto | Bajo a medio | Bajo, salvo dominio y convenciones PT2 |
-| Enteros de 64 bits | Naturales | Naturales | Requieren cuidado; posiblemente cadenas |
+| Enteros de 64 bits | Naturales | Naturales | JCS-N1 o JCS-N2 pendientes; int64 completo sin conversión con pérdida |
 | Tamaño esperado | Menor | Compacto | Mayor |
 | Legibilidad humana | Baja | Baja a media con diagnóstico | Alta |
 | Rechazo estricto | Totalmente propio | Depende del perfil y decoder | Depende del parser, I-JSON y perfil |
@@ -293,7 +348,7 @@ Cada fila requiere una resolución expresa, cualquiera sea el formato base.
 | 2. ledger_id | 16 bytes UUID; texto UUID canónico; identificador opaco con longitud prefijada | Fijar variante, longitud, orden de bytes, mayúsculas y rechazo. |
 | 3. occurred_at | entero desde epoch; texto UTC de gramática cerrada | Fijar zona, precisión, rango, redondeo y segundos intercalares. |
 | 4. Unidad temporal | segundos; milisegundos; microsegundos; nanosegundos | Una sola unidad, rango y conversión normativa, sin inferencia por magnitud. |
-| 5. Política Unicode | preservar secuencia válida; exigir una forma normalizada sin transformar; normalizar antes de codificar | Fijar versión, punto de validación y rechazo; nunca depender del locale. |
+| 5. Política Unicode | preservar toda secuencia válida; exigir una forma normalizada y rechazar las demás; normalizar antes de fijar el valor lógico y autenticar el resultado | Fijar versión y punto de validación; productor y verificador no normalizan implícitamente durante serialización o verificación. |
 | 6. Tipos dentro de payload | conjunto cerrado de string, int64, boolean, objeto y lista; añadir null; añadir bytes | Enumerar tipos, recursión, coerciones prohibidas y posiciones válidas. |
 | 7. Límites máximos | límites globales; límites por campo; combinación de ambos | Fijar bytes, caracteres, elementos, profundidad y conducta ante exceso. |
 | 8. Estructura fija o extensible | estructura cerrada por versión; extensiones solo con nueva versión; campos desconocidos ignorables pero autenticados | Determinar orden, campos desconocidos y compatibilidad; ignorar no puede cambiar los bytes autenticados. |
@@ -319,13 +374,16 @@ se generan bytes normativos definitivos.
 | Objeto anidado | Probar orden, profundidad y duplicados en un nivel interno. |
 | Lista | Probar preservación de orden, lista vacía y tipos de elementos. |
 | Orden alternativo de mapa | Demostrar el mismo valor lógico y exigir los bytes deterministas o el rechazo de entrada no canónica. |
+| Orden CBOR divergente | Usar las claves enteras 100 y -1, cuyas posiciones relativas difieren entre core deterministic y length-first, para detectar una implementación que aplique el orden contrario al futuro perfil. |
 | Campo duplicado | Demostrar rechazo antes de que el parser descarte una ocurrencia. |
 | Longitud no mínima | Demostrar rechazo de framing o CBOR más largo que la representación admitida. |
 | Truncamiento | Cubrir cortes en cabecera, longitud, valor multibyte y estructura anidada. |
 | Overflow | Cubrir longitud, entero, contador y cálculo de tamaño fuera de rango. |
-| Coma flotante prohibida | Rechazar valores finitos, cero negativo, NaN o infinito según sea representable en el formato base. |
+| Valores numéricos fuera del perfil | Para JCS, distinguir valor no integral, JSON number integral fuera del rango y cadena decimal inválida; para perfiles binarios, cubrir tipos flotantes prohibidos, cero negativo, NaN e infinito cuando sean representables. |
 | Unicode inválido | Rechazar UTF-8 inválido, sustitutos aislados u otra secuencia prohibida por el perfil. |
+| Unicode normalizado y no normalizado | Usar U+00E9 y la secuencia U+0065 U+0301 como formas visualmente equivalentes para demostrar preservación, rechazo o transformación previa, sin fijar aún cuál será el resultado normativo. |
 | Versión desconocida | Rechazar sin interpretar el resto con reglas de otra versión. |
+| Ambigüedad número/cadena JCS | Demostrar que un campo int64 no acepta alternativamente 42 y "42" como representaciones del mismo campo lógico; el tipo quedará fijado por campo y versión. |
 | Contexto secuencial inválido con tag válido | Demostrar que el valor sequence fue autenticado, pero falla continuidad mediante INVALID_SEQUENCE_CONTEXT y no INVALID_TAG. |
 
 Antes de solicitar aprobación, el conjunto deberá incluir:
@@ -393,13 +451,17 @@ PENDING.
 
 ## Fuentes técnicas consideradas
 
-- RFC 8949 — Concise Binary Object Representation (CBOR):
+- RFC 8949 — Concise Binary Object Representation (CBOR) — Standards Track:
   https://www.rfc-editor.org/rfc/rfc8949.html
-- RFC 8785 — JSON Canonicalization Scheme (JCS):
+- RFC 8785 — JSON Canonicalization Scheme (JCS) — Informational:
   https://www.rfc-editor.org/rfc/rfc8785.html
+- RFC 7493 — The I-JSON Message Format — Standards Track:
+  https://www.rfc-editor.org/rfc/rfc7493.html
 
 Estas referencias describen candidatos técnicos. No tienen por sí solas estado
-normativo dentro de PT2 y no sustituyen la aprobación expresa del perfil.
+normativo dentro de PT2 y no sustituyen la aprobación expresa del perfil. La
+categoría Standards Track o Informational de un RFC tampoco equivale a una
+aprobación normativa dentro de PT2.
 
 ## Documentos afectados
 
