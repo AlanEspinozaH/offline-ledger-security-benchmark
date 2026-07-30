@@ -292,6 +292,14 @@ Esta es una decisión candidata, no aprobada.
 
 El array exterior tiene orden posicional y no requiere orden de mapa.
 
+Todas las claves permitidas por el perfil son CBOR text strings. Para ese
+subconjunto, core deterministic y length-first producen el mismo orden
+observable. La conformidad se define por los bytes candidatos exactos, no por la
+configuración interna ni por el nombre de una rutina de biblioteca. Una
+implementación que produzca esos bytes exactos no se rechaza solo porque use
+internamente una rutina denominada length-first. `core deterministic encoding`
+se mantiene como la regla candidata del perfil.
+
 ### Límites candidatos
 
 | Límite | Valor candidato |
@@ -318,9 +326,16 @@ Todos los rechazos de esta sección conservan el estado superior existente
 
 #### `MALFORMED_CBOR`
 
-Bytes que no constituyen un elemento CBOR bien formado, incluidos truncamiento,
-cabeceras incompletas, una longitud que excede los bytes disponibles o UTF-8
-inválido dentro de un text string.
+Datos que no constituyen exactamente un elemento CBOR bien formado, incluidos
+truncamiento, cabecera incompleta, una longitud que excede los bytes disponibles,
+break inesperado o bytes sobrantes después del único elemento exterior esperado.
+
+#### `INVALID_CBOR`
+
+Un elemento CBOR bien formado pero inválido conforme a las restricciones
+básicas de CBOR, incluido UTF-8 inválido dentro de un text string, sustitutos
+aislados representados en una secuencia no válida u otra violación de validez
+básica identificada antes de aplicar el perfil PT2.
 
 #### `DUPLICATE_MAP_KEY`
 
@@ -328,22 +343,44 @@ Claves duplicadas detectadas antes de que el decoder descarte una ocurrencia.
 
 #### `ENCODING_PROFILE_VIOLATION`
 
-CBOR bien formado pero fuera del perfil, incluidos tipo prohibido, tag, bignum,
-float, `null`, byte string dentro de `payload`, clave no textual, array exterior
-de longitud diferente de 10, entero o longitud lógica fuera de rango,
-profundidad o cardinalidad excedida y versión no admitida.
+Un elemento CBOR bien formado y válido, pero fuera del modelo PT2, incluidos
+tipo prohibido, tag, bignum, float, `null`, byte string dentro de `payload`,
+clave no textual, array exterior de longitud diferente de 10, rango lógico
+excedido o profundidad o cardinalidad excedida. Las versiones enteras
+desconocidas no pertenecen a esta categoría.
 
 #### `NON_CANONICAL_ENCODING`
 
 Un valor admitido por el perfil que usa bytes no deterministas, incluidos entero
 o longitud con representación no mínima, longitud indefinida, mapas con orden
-incorrecto, bytes sobrantes u otra representación CBOR alternativa del mismo
-valor permitido.
+incorrecto u otra representación CBOR alternativa del mismo valor permitido.
 
 No se crean estados superiores nuevos. Una recodificación se permite solo para
 diagnóstico y nunca convierte una entrada rechazada en aceptada. Cuando se
 valida una representación recibida, la aceptación exige coincidencia byte a
 byte con la recodificación determinista candidata.
+
+### Tratamiento candidato de versiones no admitidas
+
+#### `MALFORMED_RECORD` / `ENCODING_PROFILE_VIOLATION`
+
+Este resultado se usa cuando `schema_version` o `mechanism_version` tienen un
+tipo CBOR incorrecto, el entero está fuera del rango lógico admitido para un
+identificador de versión, faltan las posiciones de versión o la estructura
+impide leer inequívocamente ambos campos.
+
+#### `UNSUPPORTED_VERSION`
+
+Este estado superior existente se usa cuando el campo es un entero CBOR bien
+formado y determinista y la estructura permite identificar la versión, pero el
+valor no está soportado por el verificador. Se aplica tanto a una
+`schema_version` no soportada como a una `mechanism_version` no soportada.
+
+`UNSUPPORTED_VERSION` no está subordinado a `MALFORMED_RECORD` y no es un estado
+nuevo: ya forma parte de MEC-A1 en `docs/06-mechanism-specifications.md`. Cuando
+una versión es desconocida no se interpreta el resto con reglas de v1, salvo las
+comprobaciones genéricas necesarias para reconocer de forma segura el sobre y
+sus campos de versión.
 
 ### Frontera conceptual entre valores lógicos y bytes recibidos
 
@@ -360,7 +397,8 @@ Esta propuesta distingue dos interfaces conceptuales sin implementar código.
 #### `validate_encoded_record(raw_bytes)`
 
 - se aplica solo cuando existe un blob CBOR recibido, importado o almacenado;
-- valida CBOR bien formado, duplicados, pertenencia al perfil y determinismo;
+- valida CBOR bien formado, validez CBOR básica, duplicados, pertenencia al
+  perfil y determinismo;
 - puede comparar `raw_bytes` con una recodificación determinista;
 - no debe suponerse que esta ruta existe si el sistema solo conserva campos
   lógicos.
@@ -370,6 +408,36 @@ CBOR original fuera canónica. Afirmar que se rechazó una codificación no
 canónica requiere disponer de los bytes originales. Esta tarea no decide si los
 bytes CBOR se almacenarán junto al registro. La distinción no altera HMAC ni
 autoriza implementación.
+
+### Precedencia candidata de verificación
+
+`validate_encoded_record(raw_bytes)` evalúa en este orden:
+
+1. Comprueba que exista exactamente un elemento CBOR bien formado. Si falla:
+   `MALFORMED_RECORD / MALFORMED_CBOR`.
+2. Comprueba validez CBOR básica. Si falla:
+   `MALFORMED_RECORD / INVALID_CBOR`.
+3. Detecta claves duplicadas. Si falla:
+   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`.
+4. Comprueba codificación determinista. Si falla:
+   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+5. Comprueba la estructura genérica necesaria para identificar las versiones.
+   Si falla: `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
+6. Comprueba si `schema_version` y `mechanism_version` están soportadas. Si no:
+   `UNSUPPORTED_VERSION`.
+7. Aplica el resto de restricciones del perfil v1. Si falla:
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
+8. Resuelve la clave. Si falla: `UNKNOWN_KEY`.
+9. Verifica HMAC. Si falla: `INVALID_TAG`.
+10. Evalúa el contexto secuencial cuando exista. Si falla:
+    `INVALID_SEQUENCE_CONTEXT`.
+11. En otro caso: `VALID`.
+
+No se continúa a fases posteriores después de producir un resultado. Esta
+precedencia evita que dos implementaciones elijan detalles diferentes ante una
+entrada con varios defectos. `encode_record(logical_record)` aplica las
+validaciones lógicas equivalentes, pero no produce errores de parsing o
+canonicalidad de raw bytes. El orden es **CANDIDATO NO NORMATIVO**.
 
 ## Semántica secuencial candidata
 
@@ -423,9 +491,9 @@ previstos para B son:
 | Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento mediante `MALFORMED_RECORD` y detalle `MALFORMED_CBOR`. |
 | Overflow | Cubrir longitudes, enteros, contadores y cálculos de tamaño fuera de rango. |
 | Valores numéricos prohibidos | Rechazar float, cero negativo flotante, NaN, infinito, bignum y texto numérico donde corresponda mediante `ENCODING_PROFILE_VIOLATION`. |
-| Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados mediante `MALFORMED_CBOR`. |
+| Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados mediante `MALFORMED_RECORD` con detalle `INVALID_CBOR`. |
 | Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
-| Versión desconocida | Rechazar sin inferir compatibilidad ni interpretar el resto con reglas de otra versión mediante `ENCODING_PROFILE_VIOLATION`. |
+| Versión desconocida | Esperar `UNSUPPORTED_VERSION` para `schema_version` o `mechanism_version` enteras, bien formadas, deterministas e identificables; no interpretar el resto con reglas de v1 salvo el reconocimiento genérico seguro del sobre y sus versiones. |
 | Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
 | Contexto secuencial inválido con tag válido | Producir `INVALID_SEQUENCE_CONTEXT`, no `INVALID_TAG`, después de validar formato, versión y tag. |
 
@@ -433,7 +501,8 @@ Como diagnóstico opcional de configuración de biblioteca puede usarse un map
 CBOR con las claves enteras `100` y `-1` para distinguir core deterministic de
 length-first. Ese diagnóstico está fuera del perfil porque sus claves no son
 textuales, no cuenta entre los veinte vectores y no constituye evidencia de
-conformidad del perfil.
+conformidad del perfil. Tampoco puede aprobar o rechazar por sí solo una
+implementación PT2.
 
 Antes de solicitar aprobación deberán existir bytes candidatos completos y
 hexadecimal para B, resultados coincidentes de dos codificadores o herramientas
