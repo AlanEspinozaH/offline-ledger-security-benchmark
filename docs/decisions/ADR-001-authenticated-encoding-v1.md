@@ -214,18 +214,32 @@ Las responsabilidades candidatas de versionado se separan así:
 ### Sobre candidato estable para descubrimiento de versión
 
 Dentro de la familia `PT2-CBOR-AUTH-RECORD-CANDIDATE`, las siguientes reglas son
-**CANDIDATO NO NORMATIVO** e invariantes para descubrir la versión antes de
-aplicar un perfil concreto:
+**CANDIDATO NO NORMATIVO**. Antes del despacho de versión se determina primero
+la estructura lógica mínima:
 
 - los bytes contienen exactamente un elemento CBOR;
-- el elemento exterior es un array CBOR de longitud definida;
+- el elemento exterior es un array CBOR;
 - el array contiene como mínimo las posiciones 0, 1 y 2;
 - la posición 0 es `domain`, con tipo CBOR text string;
 - la posición 1 es `schema_version`, entero CBOR no negativo;
-- la posición 2 es `mechanism_version`, entero CBOR no negativo;
-- el array exterior, sus longitudes y los tres campos de descubrimiento usan
-  representación CBOR mínima;
-- los campos de versión no usan tags ni representaciones alternativas.
+- la posición 2 es `mechanism_version`, entero CBOR no negativo.
+
+Esta comprobación lógica no exige todavía que el array use longitud definida.
+En una fase separada, todavía anterior al despacho, se comprueban las
+invariantes de canonicalidad del sobre candidato:
+
+- el array exterior usa longitud definida;
+- su longitud está codificada mínimamente;
+- `domain` usa representación determinista;
+- los campos de versión usan representación mínima, sin tags ni
+  representaciones alternativas.
+
+La longitud definida continúa siendo una invariante del sobre candidato, pero
+su incumplimiento se clasifica como canonicalidad, no como falta de pertenencia
+lógica. Un array exterior de longitud indefinida con exactamente los diez
+elementos lógicos admitidos por v1 produce
+`MALFORMED_RECORD / NON_CANONICAL_ENCODING`, no
+`MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
 
 Estas comprobaciones todavía no exigen que el array tenga longitud 10, no
 validan el literal exacto de `domain` y no aplican tipos, límites, orden de mapas
@@ -457,7 +471,8 @@ bytes CBOR originales:
 3. resuelve la clave mediante el `key_id` externo;
 4. verifica el `tag` externo sobre exactamente los mismos `raw_bytes`;
 5. evalúa el contexto secuencial opcional usando el `sequence` autenticado;
-6. produce uno de los estados superiores existentes de MEC-A1.
+6. produce uno de los errores existentes de MEC-A1 o `VALID` de MEC-A1 junto
+   con el registro lógico autenticado necesario para validación posterior.
 
 `tag` y `key_id` no forman parte de `authenticated_record_bytes_v1`; sus
 semánticas continúan sujetas a ADR-002 y MEC-A1. `sequence_context` es una
@@ -473,7 +488,8 @@ un blob CBOR original:
 2. resuelve la clave mediante el `key_id` externo;
 3. verifica el `tag` sobre los bytes deterministas recién producidos;
 4. evalúa el contexto secuencial opcional;
-5. devuelve los mismos estados superiores de MEC-A1.
+5. devuelve uno de los errores existentes de MEC-A1 o `VALID` de MEC-A1 junto
+   con el registro lógico autenticado.
 
 Reconstruir bytes desde campos de SQLite no demuestra que una serialización
 CBOR original fuera canónica. Afirmar que se rechazó una codificación no
@@ -483,6 +499,94 @@ afirma nada sobre la canonicalidad de una serialización original. Ambas rutas
 autentican exactamente `authenticated_record_bytes_v1`. Esta tarea no decide si
 el sistema almacenará el blob CBOR. Las cuatro firmas son conceptuales: no
 autorizan una API, código productivo ni una modificación de HMAC.
+
+### Fronteras de validez y significado de `VALID`
+
+Esta propuesta separa tres niveles conceptuales. La separación completa es
+**CANDIDATO NO NORMATIVO** y no crea API, clases, schemas ni código.
+
+#### Nivel 1 — Validez de codificación y perfil
+
+`validate_encoded_record(raw_bytes)` es responsable de CBOR bien formado,
+validez CBOR básica, duplicados, descubrimiento y soporte de versión, tipos y
+rangos del perfil de codificación, límites y canonicalidad. En caso
+satisfactorio devuelve `ValidatedEncodedRecord`; no devuelve `VALID`.
+
+Este nivel no resuelve claves, no verifica HMAC ni contexto secuencial, y no
+valida la enumeración de `event_type`, las reglas semánticas de `payload` ni
+reglas de negocio de la aplicación.
+
+#### Nivel 2 — Validez del mecanismo MEC-A1
+
+`verify_encoded_record(...)` y `verify_logical_record(...)` son responsables de
+la validez del mecanismo. Un resultado superior `VALID`, denominado en este ADR
+**`VALID` de MEC-A1**, significa únicamente que:
+
+1. la representación o el registro lógico satisfacen el perfil candidato;
+2. `schema_version` y `mechanism_version` están soportadas por este perfil;
+3. `key_id` pudo resolverse;
+4. el `tag` HMAC es válido sobre los bytes autenticados exactos;
+5. el contexto secuencial, cuando fue proporcionado, coincide con el registro.
+
+`verify_encoded_record(...)` puede devolver uno de los errores existentes de
+MEC-A1 o `VALID` de MEC-A1 junto con el registro lógico autenticado necesario
+para una validación posterior. `verify_logical_record(...)` puede devolver los
+mismos resultados y, en el caso satisfactorio, el registro lógico autenticado.
+El registro junto al resultado es conceptual y no crea una clase ni un schema.
+
+`VALID` de MEC-A1 no significa que `event_type` pertenezca a una enumeración de
+aplicación, que `payload` cumpla la semántica de un evento, que existan
+referencias de negocio válidas, que una venta, producto u operador sea aceptable
+para la aplicación, que el registro sea el extremo terminal vigente, que no
+haya ocurrido rollback ni que el contexto recibido sea fresco o confiable.
+
+#### Nivel 3 — Validación semántica del schema de aplicación
+
+`validate_application_schema(verified_record)` es una operación conceptual
+separada y exterior a la máquina de estados de MEC-A1. Recibe únicamente un
+registro que ya obtuvo `VALID` de MEC-A1, selecciona las reglas mediante el
+`schema_version` autenticado, valida la enumeración de `event_type`, nombres,
+presencia y semántica de campos de `payload`, y restricciones cruzadas propias
+de la aplicación. Produce un resultado de aplicación separado.
+
+ADR-001 no define la enumeración de eventos, las reglas de cada `payload`, una
+taxonomía de errores de aplicación ni un schema productivo. Esas reglas
+requieren un documento, schema o decisión posterior. No se crea un estado
+superior adicional dentro de MEC-A1.
+
+#### Precedencia antes del uso por la aplicación
+
+El orden conceptual es:
+
+1. construir o validar los bytes autenticados;
+2. verificar la versión soportada;
+3. resolver la clave;
+4. verificar HMAC;
+5. evaluar el contexto secuencial opcional;
+6. producir `VALID` de MEC-A1;
+7. solo después, antes de usar el registro en la aplicación, ejecutar
+   `validate_application_schema`.
+
+La aplicación no interpreta ni ejecuta semántica de negocio sobre un registro
+que todavía no tenga `VALID` de MEC-A1. Autenticar primero evita utilizar
+semántica de un registro no autenticado. La validación posterior del schema no
+modifica los bytes ni el tag: un registro puede ser `VALID` para MEC-A1 y ser
+rechazado después por el schema de aplicación, sin que el tag se vuelva inválido
+ni que el fallo se convierta en `ENCODING_PROFILE_VIOLATION`, `INVALID_TAG` o
+`INVALID_SEQUENCE_CONTEXT`. La aceptación final de la aplicación requiere tanto
+`VALID` de MEC-A1 como un resultado satisfactorio del schema de aplicación.
+
+#### Responsabilidad autenticada de `schema_version`
+
+`schema_version` forma parte de `authenticated_record_bytes_v1` y gobierna la
+interpretación semántica de `event_type` y `payload`. El perfil candidato v1
+solo admite `schema_version = 1`; una versión desconocida produce
+`UNSUPPORTED_VERSION`. Admitir el número 1 no equivale a definir en ADR-001 todas
+las reglas semánticas del schema v1.
+
+Como el selector forma parte de los bytes autenticados, no puede cambiarse sin
+invalidar el HMAC. La definición efectiva y verificable del schema de aplicación
+continúa pendiente.
 
 ### Precedencia candidata de verificación
 
@@ -531,7 +635,13 @@ autorizan una API, código productivo ni una modificación de HMAC.
 11. Evalúa `SequenceContextCandidateV1` cuando exista. Si el ledger es distinto,
     produce `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`; si la secuencia es
     distinta, produce `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`.
-12. En otro caso: `VALID`.
+12. En otro caso: `VALID` de MEC-A1.
+
+En particular, un array exterior de longitud indefinida que contenga exactamente
+los diez elementos lógicos admitidos por v1 supera la comprobación lógica de la
+fase 3, pero falla la canonicalidad del sobre en la fase 4 con
+`MALFORMED_RECORD / NON_CANONICAL_ENCODING`. No se clasifica como
+`ENCODING_PROFILE_VIOLATION`.
 
 No se continúa a fases posteriores después de producir un resultado. Esta
 precedencia evita que dos implementaciones elijan detalles diferentes ante una
@@ -644,7 +754,7 @@ Para verificar registros presentados en orden, el llamador:
 
 1. inicia con `expected_sequence = 1` y el `expected_ledger_id` pertinente;
 2. entrega el contexto al verificador;
-3. incrementa la expectativa solo después de un resultado `VALID`;
+3. incrementa la expectativa solo después de un resultado `VALID` de MEC-A1;
 4. no avanza el contexto después de un rechazo.
 
 Con este predicado, huecos, duplicados o reordenamiento producen
@@ -659,9 +769,9 @@ contexto obtenido del mismo snapshot local restaurable no aporta resistencia
 adicional frente a rollback, y un contexto desactualizado o controlado por el
 adversario no demuestra frescura.
 
-Un resultado `VALID` solo significa coincidencia con el contexto recibido; no
-demuestra que el registro sea el extremo terminal vigente. ADR-004 permanece
-sin cambios.
+Un resultado `VALID` de MEC-A1 solo significa coincidencia con el contexto
+recibido dentro de las garantías del mecanismo; no demuestra que el registro
+sea el extremo terminal vigente. ADR-004 permanece sin cambios.
 
 #### Contexto inválido como entrada
 
@@ -694,7 +804,7 @@ previstos para B son:
 
 | Vector | Propósito mínimo |
 |---|---|
-| Registro mínimo válido | Cubrir todos los campos obligatorios en mínimos permitidos; como subcasos, contexto ausente y contexto presente con ledger y secuencia exactamente coincidentes pueden alcanzar `VALID` si las demás comprobaciones pasan. |
+| Registro mínimo válido para MEC-A1 | Comprobar que perfil y canonicalidad válidos, versión soportada, `key_id` resoluble, `tag` válido y contexto ausente o exactamente coincidente pueden alcanzar `VALID` de MEC-A1; no afirma aceptación por el schema de aplicación. |
 | Unicode multibyte | Probar UTF-8 y la política Unicode fuera de ASCII. |
 | Cadenas vacías | Distinguir cadenas permitidas en payload de campos exteriores no vacíos, ausencia y null. |
 | Límites de enteros | Cubrir int64 mínimo y máximo, cero, negativos permitidos y valores fuera de rango. |
@@ -705,7 +815,7 @@ previstos para B son:
 | Orden determinista de map textual | Usar solo claves textuales permitidas, fijar el valor lógico, exigir los bytes candidatos en core deterministic encoding y verificar coincidencia entre dos codificadores independientes. |
 | Orden textual no determinista | Usar el mismo map y las mismas claves textuales, presentar deliberadamente los pares en otro orden y esperar `MALFORMED_RECORD` con detalle `NON_CANONICAL_ENCODING`. |
 | Clave duplicada | Usar claves textuales individualmente válidas con dos ocurrencias equivalentes y exigir `MALFORMED_RECORD / DUPLICATE_MAP_KEY`, tanto si el parser preserva pares como si una biblioteca estricta reporta la duplicación como error de validez. |
-| Longitud no mínima | Cubrir, sobre valores admitidos, un entero con representación no mínima y text string, array y map con longitud indefinida; todos esperan `MALFORMED_RECORD / NON_CANONICAL_ENCODING`. |
+| Longitud no mínima | Cubrir, sobre valores admitidos, un entero con representación no mínima, text string, array y map con longitud indefinida, incluido como subcaso un array exterior indefinido con exactamente diez elementos lógicamente admitidos; todos esperan `MALFORMED_RECORD / NON_CANONICAL_ENCODING`. |
 | Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento mediante `MALFORMED_RECORD` y detalle `MALFORMED_CBOR`. |
 | Overflow | Cubrir longitudes, enteros, contadores y cálculos de tamaño fuera de rango. |
 | Tipos y valores prohibidos | Cubrir byte string definida e indefinida dentro de payload, float, cero negativo flotante, NaN, infinito, bignum, null, tag y clave no textual; todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. |
@@ -714,6 +824,10 @@ previstos para B son:
 | Versión desconocida | Cubrir los cuatro subcasos de despacho definidos después de la tabla y demostrar que una versión desconocida no se interpreta mediante reglas completas de v1. |
 | Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
 | Contexto secuencial inválido con tag válido | Con registro autenticado `ledger_id = L`, `sequence = 5`, `tag` válido, `key_id` resoluble y contexto `(L, 6)`, exigir `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`; como subcaso, registro con `L1` y contexto con `L2` exige `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`. |
+
+La suite de vectores de ADR-001 valida codificación, mecanismo y contexto; no
+sustituye una futura suite del schema de aplicación. Antes de una integración
+productiva deberán existir fixtures de schema separados.
 
 El vector `Versión desconocida` incluye, sin generar todavía sus bytes:
 
@@ -816,6 +930,13 @@ PENDING.
 - ADR-001 continúa `DRAFT`.
 - MEC-A1 continúa `BLOCKED`.
 - ADR-002 continúa pendiente.
+- ADR-001 puede congelar una representación autenticada sin congelar todavía
+  todas las reglas de negocio; `schema_version` mantiene autenticada la
+  selección del schema.
+- La implementación productiva continúa bloqueada porque ADR-001 sigue `DRAFT`,
+  ADR-002 sigue pendiente, todavía no existen bytes y vectores candidatos
+  validados y falta una definición verificable del schema de aplicación para la
+  aceptación final.
 - No existen bytes autenticados normativos.
 - No existe schema normativo.
 - No se autoriza integración productiva.
@@ -824,6 +945,7 @@ PENDING.
 - Una tarea futura podrá crear codificadores de referencia y vectores marcados
   `CANDIDATO NO NORMATIVO` solo si el investigador acepta primero esta propuesta
   para experimentación.
+- Estas fronteras no modifican ADR-004 ni añaden garantía de frescura.
 - No se modifica la semántica vigente de RQ-01, THR-P1 ni los ataques pendientes.
 
 ## Fuentes técnicas consideradas
