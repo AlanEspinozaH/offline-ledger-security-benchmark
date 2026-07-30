@@ -360,13 +360,22 @@ break inesperado o bytes sobrantes después del único elemento exterior esperad
 #### `INVALID_CBOR`
 
 Un elemento CBOR bien formado pero inválido conforme a las restricciones
-básicas de CBOR, incluido UTF-8 inválido dentro de un text string, sustitutos
-aislados representados en una secuencia no válida u otra violación de validez
-básica identificada antes de aplicar el perfil PT2.
+básicas de CBOR o de tags, excepto claves duplicadas. Incluye UTF-8 inválido
+dentro de un text string, sustitutos aislados representados en una secuencia no
+válida, contenido inválido de un tag reconocido u otra violación de validez
+básica identificada antes de aplicar el perfil PT2. Un tag CBOR válido pero
+prohibido por PT2 continúa siendo `ENCODING_PROFILE_VIOLATION`.
 
 #### `DUPLICATE_MAP_KEY`
 
-Claves duplicadas detectadas antes de que el decoder descarte una ocurrencia.
+Una clave duplicada es una condición de validez CBOR básica que se expone con
+este detalle específico y nunca se degrada a `INVALID_CBOR`. El parser o adapter
+que procese `raw_bytes` debe preservar todos los pares de mapas o devolver una
+señal específica de clave duplicada. Si una biblioteca estricta rechaza el
+elemento por duplicación durante su validación básica, el adapter mapea el error
+a `MALFORMED_RECORD / DUPLICATE_MAP_KEY`, no a
+`MALFORMED_RECORD / INVALID_CBOR`. Un decoder que descarte silenciosamente una
+ocurrencia no es apto para validar bytes adversariales del perfil candidato.
 
 #### `ENCODING_PROFILE_VIOLATION`
 
@@ -438,7 +447,7 @@ Esta propuesta distingue cuatro interfaces conceptuales sin implementar código.
 `ValidatedEncodedRecord` no crea un schema, una clase de código ni un nuevo
 estado superior.
 
-#### `verify_encoded_record(raw_bytes, tag, key_id, sequence_context=None)`
+#### `verify_encoded_record(raw_bytes, tag, key_id, sequence_context: SequenceContextCandidateV1 | None = None)`
 
 Esta interfaz conceptual representa la verificación completa cuando existen los
 bytes CBOR originales:
@@ -455,7 +464,7 @@ semánticas continúan sujetas a ADR-002 y MEC-A1. `sequence_context` es una
 entrada externa opcional y su ausencia no produce automáticamente
 `INVALID_SEQUENCE_CONTEXT`.
 
-#### `verify_logical_record(logical_record, tag, key_id, sequence_context=None)`
+#### `verify_logical_record(logical_record, tag, key_id, sequence_context: SequenceContextCandidateV1 | None = None)`
 
 Esta interfaz conceptual se aplica cuando SQLite conserva campos lógicos y no
 un blob CBOR original:
@@ -477,41 +486,51 @@ autorizan una API, código productivo ni una modificación de HMAC.
 
 ### Precedencia candidata de verificación
 
-`verify_encoded_record(raw_bytes, tag, key_id, sequence_context=None)` evalúa en
-este orden:
+`verify_encoded_record(...)` evalúa en este orden:
 
 1. Comprueba que exista exactamente un elemento CBOR bien formado. Si falla:
    `MALFORMED_RECORD / MALFORMED_CBOR`.
-2. Comprueba validez CBOR básica del elemento completo. Si falla:
-   `MALFORMED_RECORD / INVALID_CBOR`.
-3. Comprueba la estructura estable necesaria para descubrir las versiones:
-   array exterior de longitud definida, al menos tres posiciones y tipos
-   correctos para `domain`, `schema_version` y `mechanism_version`. Si falla:
+2. Comprueba validez CBOR básica y de tags con enrutamiento especial. Si la
+   condición detectada es una clave duplicada, produce
+   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`; si es otra violación de validez,
+   produce `MALFORMED_RECORD / INVALID_CBOR`. La duplicación se clasifica de
+   forma específica aunque la biblioteca la detecte dentro de su modo de
+   validación básica.
+3. Comprueba la estructura lógica mínima para descubrir las versiones: el
+   elemento exterior es un array, posee al menos las posiciones 0, 1 y 2,
+   `domain` es text string, y `schema_version` y `mechanism_version` son enteros
+   no negativos. Todavía no comprueba longitud exacta 10, literal exacto de
+   `domain`, tipos del cuerpo ni representación definida o mínima del array
+   exterior. Si falla:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
-4. Comprueba exclusivamente la codificación determinista del sobre de
-   descubrimiento y de los campos de versión. Si falla:
+4. Comprueba la representación determinista del sobre de descubrimiento: array
+   exterior de longitud definida, longitud codificada mínimamente, `domain` y
+   versiones con representaciones mínimas, y ausencia de representaciones
+   alternativas en las posiciones 0 a 2. Si falla:
    `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
 5. Comprueba si `schema_version` y `mechanism_version` están soportadas. Si
    cualquiera no está soportada: `UNSUPPORTED_VERSION`. La evaluación se
    detiene aquí y no se aplican reglas de v1 al resto.
-6. Para versiones soportadas por v1, detecta claves duplicadas. Si falla:
-   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`.
-7. Comprueba la pertenencia semántica completa al perfil v1 sin evaluar todavía
-   formas alternativas de representación. Esto incluye array exterior de
-   longitud lógica 10, `domain` exacto, tipos admitidos y prohibidos, tags,
-   bignums, float, null, byte string dentro de `payload`, claves no textuales,
-   rangos, longitudes lógicas, límites, profundidad y cardinalidad. Si falla:
+6. Para v1 soportado, comprueba estructura y pertenencia de tipos: array
+   exterior con longitud lógica 10, `domain` exacto, tipos exteriores, tipos
+   permitidos de `payload`, tipos prohibidos, tags válidos pero prohibidos,
+   bignums, floats, null, byte strings en `payload` y claves no textuales. Si
+   falla:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
-8. Solo para un valor que pertenece semánticamente al perfil v1, comprueba la
-   codificación determinista completa: representación mínima, longitudes
-   definidas, orden de mapas y cualquier otra representación alternativa del
-   mismo valor permitido. Si falla:
+7. Comprueba valores y límites del perfil: rangos, longitudes lógicas, tamaño
+   total, profundidad, cardinalidad y límites de textos, arrays y maps. Si
+   falla:
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
+8. Para un valor admitido por completo, comprueba la codificación determinista:
+   enteros y longitudes mínimos, longitudes definidas, orden de mapas y
+   representación única de cada valor permitido. Si falla:
    `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
-9. Resuelve la clave usando el `key_id` externo. Si falla: `UNKNOWN_KEY`.
-10. Verifica el `tag` externo sobre los bytes autenticados exactos. Si falla:
+9. Resuelve la clave mediante el `key_id` externo. Si falla: `UNKNOWN_KEY`.
+10. Verifica el `tag` externo sobre los bytes exactos. Si falla:
     `INVALID_TAG`.
-11. Evalúa `sequence_context` cuando exista. Si falla:
-    `INVALID_SEQUENCE_CONTEXT`.
+11. Evalúa `SequenceContextCandidateV1` cuando exista. Si el ledger es distinto,
+    produce `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`; si la secuencia es
+    distinta, produce `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`.
 12. En otro caso: `VALID`.
 
 No se continúa a fases posteriores después de producir un resultado. Esta
@@ -561,21 +580,96 @@ ejemplo:
 antes de que un decoder pierda una ocurrencia. Esta regla también es
 **CANDIDATO NO NORMATIVO**.
 
+### Duplicados y despacho de versiones
+
+Las claves duplicadas son una condición de validez CBOR genérica, no una regla
+específica de v1. Por ello, un elemento con duplicados produce
+`DUPLICATE_MAP_KEY` antes del despacho de versión. Una versión desconocida solo
+produce `UNSUPPORTED_VERSION` cuando el elemento es bien formado, no contiene
+errores de validez CBOR y el sobre de descubrimiento es determinista.
+
+El subcaso de versión desconocida con cuerpo no canónico según v1 no usa claves
+duplicadas, UTF-8 inválido ni tags con contenido inválido. Puede usar una forma
+CBOR bien formada y válida que no satisfaría las reglas deterministas completas
+de v1, las cuales no se aplican antes del despacho.
+
 ## Semántica secuencial candidata
 
 `sequence` se autentica dentro del array, pero MEC-A1 no determina por sí mismo
-continuidad ni extremo terminal. Una política común separada compara el valor
-autenticado con un contexto explícito.
+continuidad ni extremo terminal. La siguiente definición completa la política
+contextual común como **CANDIDATO NO NORMATIVO**.
 
-- si no se proporciona contexto, su ausencia no produce automáticamente
-  `INVALID_SEQUENCE_CONTEXT`;
-- si se proporciona contexto y el valor autenticado es incompatible, el
-  resultado es `INVALID_SEQUENCE_CONTEXT`;
-- `INVALID_SEQUENCE_CONTEXT` solo se evalúa después de que formato, versión y
-  tag sean válidos;
-- `VALID` no implica frescura terminal ni ausencia de rollback.
+### `SequenceContextCandidateV1`
 
-La propuesta no modifica ADR-004.
+`SequenceContextCandidateV1` es una entrada conceptual ya tipada. No crea una
+clase, schema ni formato serializado. Contiene exactamente dos valores:
+
+- `expected_ledger_id`: secuencia opaca de exactamente 16 octetos;
+- `expected_sequence`: entero en `1..2^63-1`.
+
+El contexto es externo a `authenticated_record_bytes_v1`, `tag`, `key_id` y la
+base de datos autenticada. No forma parte del mensaje HMAC.
+
+#### Predicado exacto
+
+Después de que formato, versión, clave y tag sean válidos, el registro satisface
+el contexto únicamente cuando se cumplen ambas igualdades:
+
+`record.ledger_id == sequence_context.expected_ledger_id`
+
+`record.sequence == sequence_context.expected_sequence`
+
+Si `sequence_context` es `None`, se omite la comprobación y su ausencia no
+produce `INVALID_SEQUENCE_CONTEXT`. Si existe un contexto bien construido y
+falla la primera igualdad, el resultado es
+`INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`. Si la primera igualdad se
+cumple y falla la segunda, el resultado es
+`INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`. Cuando fallan ambas,
+`LEDGER_ID_MISMATCH` tiene prioridad y la evaluación se detiene.
+
+Estos dos detalles son candidatos y no crean estados superiores nuevos.
+
+#### Primer registro, sucesores y secuencia presentada
+
+Para validar el primer registro esperado de un ledger,
+`expected_ledger_id` contiene el identificador esperado y
+`expected_sequence = 1`.
+
+Cuando un llamador dispone de un predecesor aceptado con secuencia `p`, puede
+construir el contexto siguiente con `expected_sequence = p + 1` solo si
+`p < 2^63-1`. Si `p = 2^63-1`, no existe un siguiente valor admitido y no debe
+construirse un contexto sucesor.
+
+Para verificar registros presentados en orden, el llamador:
+
+1. inicia con `expected_sequence = 1` y el `expected_ledger_id` pertinente;
+2. entrega el contexto al verificador;
+3. incrementa la expectativa solo después de un resultado `VALID`;
+4. no avanza el contexto después de un rechazo.
+
+Con este predicado, huecos, duplicados o reordenamiento producen
+`UNEXPECTED_SEQUENCE` respecto del contexto proporcionado. MEC-A1 no necesita
+distinguir la causa histórica exacta del desacuerdo.
+
+#### Procedencia y alcance de la garantía
+
+ADR-001 define el modelo y el predicado del contexto, no su procedencia. El
+llamador debe suministrarlo desde estado externo o una fixture de prueba. Un
+contexto obtenido del mismo snapshot local restaurable no aporta resistencia
+adicional frente a rollback, y un contexto desactualizado o controlado por el
+adversario no demuestra frescura.
+
+Un resultado `VALID` solo significa coincidencia con el contexto recibido; no
+demuestra que el registro sea el extremo terminal vigente. ADR-004 permanece
+sin cambios.
+
+#### Contexto inválido como entrada
+
+Un `SequenceContextCandidateV1` con `expected_ledger_id` de longitud distinta de
+16, `expected_sequence` fuera de rango o tipos incorrectos es un error de
+construcción o configuración del llamador. La verificación no se inicia y no se
+produce uno de los estados de MEC-A1. `INVALID_SEQUENCE_CONTEXT` se reserva para
+un contexto bien construido que no coincide con el registro autenticado.
 
 ## Relación con ADR-002
 
@@ -600,7 +694,7 @@ previstos para B son:
 
 | Vector | Propósito mínimo |
 |---|---|
-| Registro mínimo válido | Cubrir todos los campos obligatorios en mínimos permitidos. |
+| Registro mínimo válido | Cubrir todos los campos obligatorios en mínimos permitidos; como subcasos, contexto ausente y contexto presente con ledger y secuencia exactamente coincidentes pueden alcanzar `VALID` si las demás comprobaciones pasan. |
 | Unicode multibyte | Probar UTF-8 y la política Unicode fuera de ASCII. |
 | Cadenas vacías | Distinguir cadenas permitidas en payload de campos exteriores no vacíos, ausencia y null. |
 | Límites de enteros | Cubrir int64 mínimo y máximo, cero, negativos permitidos y valores fuera de rango. |
@@ -610,7 +704,7 @@ previstos para B son:
 | Array | Probar orden, array vacío y tipos de elementos. |
 | Orden determinista de map textual | Usar solo claves textuales permitidas, fijar el valor lógico, exigir los bytes candidatos en core deterministic encoding y verificar coincidencia entre dos codificadores independientes. |
 | Orden textual no determinista | Usar el mismo map y las mismas claves textuales, presentar deliberadamente los pares en otro orden y esperar `MALFORMED_RECORD` con detalle `NON_CANONICAL_ENCODING`. |
-| Clave duplicada | Rechazar antes de que el decoder descarte una ocurrencia con `MALFORMED_RECORD` y detalle `DUPLICATE_MAP_KEY`. |
+| Clave duplicada | Usar claves textuales individualmente válidas con dos ocurrencias equivalentes y exigir `MALFORMED_RECORD / DUPLICATE_MAP_KEY`, tanto si el parser preserva pares como si una biblioteca estricta reporta la duplicación como error de validez. |
 | Longitud no mínima | Cubrir, sobre valores admitidos, un entero con representación no mínima y text string, array y map con longitud indefinida; todos esperan `MALFORMED_RECORD / NON_CANONICAL_ENCODING`. |
 | Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento mediante `MALFORMED_RECORD` y detalle `MALFORMED_CBOR`. |
 | Overflow | Cubrir longitudes, enteros, contadores y cálculos de tamaño fuera de rango. |
@@ -619,7 +713,7 @@ previstos para B son:
 | Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
 | Versión desconocida | Cubrir los cuatro subcasos de despacho definidos después de la tabla y demostrar que una versión desconocida no se interpreta mediante reglas completas de v1. |
 | Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
-| Contexto secuencial inválido con tag válido | Usar como entradas externas un registro lógico o bytes autenticados válidos, `tag` válido, `key_id` resoluble y `sequence_context` incompatible; producir `INVALID_SEQUENCE_CONTEXT`. |
+| Contexto secuencial inválido con tag válido | Con registro autenticado `ledger_id = L`, `sequence = 5`, `tag` válido, `key_id` resoluble y contexto `(L, 6)`, exigir `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`; como subcaso, registro con `L1` y contexto con `L2` exige `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`. |
 
 El vector `Versión desconocida` incluye, sin generar todavía sus bytes:
 
@@ -634,7 +728,14 @@ El vector `Versión desconocida` incluye, sin generar todavía sus bytes:
    `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
 
 Los dos primeros subcasos demuestran que el verificador no interpreta una
-versión desconocida mediante reglas del perfil v1.
+versión desconocida mediante reglas del perfil v1. Los subcasos que esperan
+`UNSUPPORTED_VERSION` no contienen claves duplicadas, UTF-8 inválido ni otra
+invalidez CBOR genérica.
+
+El vector `Clave duplicada` debe producir el mismo resultado con un parser que
+preserve todos los pares y con una biblioteca estricta que señale la duplicación
+como error de validez. Un decoder que pierda silenciosamente una ocurrencia no
+puede usarse como verificador independiente.
 
 Como diagnóstico opcional de configuración de biblioteca puede usarse un map
 CBOR con las claves enteras `100` y `-1` para distinguir core deterministic de
