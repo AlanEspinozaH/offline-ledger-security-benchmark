@@ -252,6 +252,44 @@ Una futura versión de esta familia debe conservar este sobre de descubrimiento.
 Una versión que necesite mover esos campos o usar otra estructura requerirá una
 familia o mecanismo de despacho diferente y una nueva decisión expresa.
 
+### Presupuesto candidato de descubrimiento y despacho
+
+Todo elemento de la familia `PT2-CBOR-AUTH-RECORD-CANDIDATE` queda sujeto al
+siguiente presupuesto obligatorio **CANDIDATO NO NORMATIVO** antes de decidir si
+una versión es soportada o desconocida:
+
+- `raw_bytes`: máximo 65536 octetos;
+- profundidad estructural máxima 9, contando el array exterior como profundidad
+  1;
+- máximo 256 elementos por array;
+- máximo 256 pares por map;
+- máximo 16384 octetos por cada text string o byte string.
+
+Los límites de strings se aplican a la longitud total reconstruida, incluso si
+CBOR usa chunks de longitud indefinida. Los límites de arrays y maps se aplican
+tanto a formas definidas como indefinidas. Cada tag CBOR interpuesto cuenta como
+un nivel estructural para el presupuesto de profundidad. Los bytes completos
+permanecen sujetos al límite global aunque cada contenedor individual cumpla su
+límite.
+
+El parser o adapter debe configurar estos límites antes de recorrer el cuerpo
+completo. El límite de `raw_bytes` se comprueba antes de iniciar el parsing; los
+demás se comprueban durante un recorrido acotado. Un parser que primero construya
+una estructura sin límites y después la valide no satisface el perfil candidato.
+
+El presupuesto no contiene reglas semánticas de v1: limita recursos de la
+familia para que el despacho sea reproducible y acotado. No interpreta el
+`domain`, los tipos del cuerpo, `payload` ni la canonicalidad completa de v1.
+Una futura versión que necesite excederlo requiere una revisión expresa del
+presupuesto de la familia o una nueva familia de despacho; no puede ampliarlo
+silenciosamente.
+
+Exceder cualquiera de estos límites produce
+`MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION` antes de
+`UNSUPPORTED_VERSION`. Una versión desconocida dentro del presupuesto puede
+producir `UNSUPPORTED_VERSION`; una que lo exceda produce la violación de perfil
+indicada.
+
 ### Separación de dominio candidata
 
 La posición 0 es un CBOR text string cuyo contenido ASCII exacto es:
@@ -266,8 +304,8 @@ El literal continúa como **CANDIDATO NO NORMATIVO**.
 
 | Campo | Tipo y restricciones candidatas |
 |---|---|
-| `schema_version` | Entero CBOR no negativo, valor inicial 1 y representación mínima. Se rechaza otro valor mientras el perfil sea v1. |
-| `mechanism_version` | Entero CBOR no negativo, valor inicial 1 y representación mínima. Se rechaza otro valor mientras el perfil sea v1. |
+| `schema_version` | Entero CBOR no negativo en `0..9223372036854775807` (`0..2^63-1`), con representación mínima. El perfil actual solo soporta 1. |
+| `mechanism_version` | Entero CBOR no negativo en `0..9223372036854775807` (`0..2^63-1`), con representación mínima. El perfil actual solo soporta 1. |
 | `ledger_id` | CBOR byte string de exactamente 16 octetos, identificador binario opaco. No admite texto alternativo ni tags. |
 | `sequence` | Entero CBOR positivo en `1..2^63-1`, con representación mínima. Cero y negativos son inválidos. |
 | `event_type` | CBOR text string no vacío de 1 a 64 octetos UTF-8. Su enumeración pertenece al schema. |
@@ -275,6 +313,21 @@ El literal continúa como **CANDIDATO NO NORMATIVO**.
 | `operator_id` | CBOR text string no vacío de hasta 128 octetos UTF-8. |
 | `amount_cents` | Entero con signo en `-9223372036854775808..9223372036854775807`, con representación mínima. Prohibidos float y texto. |
 | `payload` | CBOR map sujeto al modelo recursivo y límites siguientes. |
+
+El rango lógico candidato de ambos identificadores de versión es exactamente
+`0..9223372036854775807`, equivalente a `0..2^63-1`. El valor 0 está reservado;
+0 y los valores `2..2^63-1` producen `UNSUPPORTED_VERSION`. El valor 1 es el
+único soportado por el perfil actual.
+
+Un valor mayor que `2^63-1`, un entero negativo, bignum, tag o tipo no entero
+produce `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. Un valor dentro del
+rango con representación no mínima produce
+`MALFORMED_RECORD / NON_CANONICAL_ENCODING`. El rango se comprueba antes del
+soporte y no se infiere compatibilidad entre versiones.
+
+Este rango es una decisión candidata de PT2, no una exigencia de CBOR. Se elige
+para evitar discrepancias entre implementaciones que usan enteros con signo y
+aquellas que preservan el rango CBOR no negativo completo.
 
 La unidad de `occurred_at` no se infiere por magnitud. No se redondea ni trunca
 silenciosamente: el valor lógico debe llegar ya expresado en milisegundos
@@ -360,6 +413,13 @@ en octetos UTF-8 o elementos según corresponda, nunca en unidades dependientes
 del lenguaje. Son límites candidatos sujetos a validación con datos reales del
 benchmark.
 
+La profundidad 9 del presupuesto de despacho cuenta el array exterior como
+nivel 1; la profundidad máxima 8 dentro de `payload` conserva la definición
+anterior. Para un registro v1 ambas formulaciones son compatibles. Después del
+despacho siguen aplicándose los límites más específicos de v1. Los byte strings
+continúan prohibidos dentro de `payload` v1, aunque el dispatcher genérico pueda
+recorrerlos de forma acotada en una versión desconocida.
+
 ### Taxonomía candidata de errores de codificación
 
 Todos los rechazos de esta sección conservan el estado superior existente
@@ -415,22 +475,48 @@ byte con la recodificación determinista candidata.
 #### `MALFORMED_RECORD` / `ENCODING_PROFILE_VIOLATION`
 
 Este resultado se usa cuando `schema_version` o `mechanism_version` tienen un
-tipo CBOR incorrecto, el entero está fuera del rango lógico admitido para un
-identificador de versión, faltan las posiciones de versión o la estructura
-impide leer inequívocamente ambos campos.
+tipo CBOR incorrecto, son negativos, bignums o tags, el entero excede
+`2^63-1`, faltan las posiciones de versión o la estructura impide leer
+inequívocamente ambos campos.
 
 #### `UNSUPPORTED_VERSION`
 
 Este estado superior existente se usa cuando el campo es un entero CBOR bien
-formado y determinista y la estructura permite identificar la versión, pero el
-valor no está soportado por el verificador. Se aplica tanto a una
-`schema_version` no soportada como a una `mechanism_version` no soportada.
+formado y determinista dentro de `0..2^63-1` y la estructura permite identificar
+la versión, pero el valor no está soportado por el verificador. El valor 0 está
+reservado y los valores `2..2^63-1` tampoco están soportados. Se aplica tanto a
+`schema_version` como a `mechanism_version`; solo el valor 1 está soportado.
 
 `UNSUPPORTED_VERSION` no está subordinado a `MALFORMED_RECORD` y no es un estado
 nuevo: ya forma parte de MEC-A1 en `docs/06-mechanism-specifications.md`. Cuando
 una versión es desconocida no se interpreta el resto con reglas de v1; solo se
 aplican las comprobaciones genéricas de CBOR y del sobre estable necesarias para
 reconocer de forma segura sus campos de versión.
+
+### Contrato candidato de `TagCandidateV1`
+
+`TagCandidateV1` es una secuencia opaca de exactamente 32 octetos que representa
+la salida completa de HMAC-SHA-256. No se permiten tags truncados ni extendidos;
+en particular, no se aceptan longitudes de 16, 20, 24 o 28 octetos.
+
+El tag es externo a `authenticated_record_bytes_v1`, no contiene prefijo,
+identificador de algoritmo ni terminador, y siempre autentica exactamente esos
+bytes. La interfaz conceptual recibe octetos, no texto. Hexadecimal, Base64,
+Base64URL u otra codificación de transporte se decodifica antes de invocar al
+verificador. ADR-001 no selecciona una codificación textual de almacenamiento o
+transporte ni un formato de columna SQLite o de red. Si el texto no puede
+decodificarse, la verificación MEC-A1 no se inicia y el error pertenece a la
+capa de transporte.
+
+Una secuencia de octetos cuya longitud difiere de 32 produce `INVALID_TAG`. Una
+secuencia de 32 octetos distinta del HMAC esperado también produce
+`INVALID_TAG`; si coincide, la verificación continúa a la fase de contexto. La
+comparación de los 32 octetos se realiza conceptualmente sin salida temprana
+dependiente del primer octeto diferente. No se crea un estado superior nuevo.
+
+`key_id` continúa bajo ADR-002. Fijar el tamaño del tag no aprueba el alcance,
+provisión o rotación de claves; la clave sigue siendo necesaria para calcular el
+HMAC esperado.
 
 ### Frontera conceptual entre valores lógicos y bytes recibidos
 
@@ -461,7 +547,7 @@ Esta propuesta distingue cuatro interfaces conceptuales sin implementar código.
 `ValidatedEncodedRecord` no crea un schema, una clase de código ni un nuevo
 estado superior.
 
-#### `verify_encoded_record(raw_bytes, tag, key_id, sequence_context: SequenceContextCandidateV1 | None = None)`
+#### `verify_encoded_record(raw_bytes, tag: TagCandidateV1, key_id, sequence_context: SequenceContextCandidateV1 | None = None)`
 
 Esta interfaz conceptual representa la verificación completa cuando existen los
 bytes CBOR originales:
@@ -479,7 +565,7 @@ semánticas continúan sujetas a ADR-002 y MEC-A1. `sequence_context` es una
 entrada externa opcional y su ausencia no produce automáticamente
 `INVALID_SEQUENCE_CONTEXT`.
 
-#### `verify_logical_record(logical_record, tag, key_id, sequence_context: SequenceContextCandidateV1 | None = None)`
+#### `verify_logical_record(logical_record, tag: TagCandidateV1, key_id, sequence_context: SequenceContextCandidateV1 | None = None)`
 
 Esta interfaz conceptual se aplica cuando SQLite conserva campos lógicos y no
 un blob CBOR original:
@@ -499,6 +585,11 @@ afirma nada sobre la canonicalidad de una serialización original. Ambas rutas
 autentican exactamente `authenticated_record_bytes_v1`. Esta tarea no decide si
 el sistema almacenará el blob CBOR. Las cuatro firmas son conceptuales: no
 autorizan una API, código productivo ni una modificación de HMAC.
+
+El tipo conceptual `TagCandidateV1` exige octetos y su longitud se valida en la
+fase del tag. Un error del sistema de tipos del lenguaje anfitrión queda fuera
+de los estados MEC-A1; una secuencia de octetos con longitud incorrecta sí
+produce `INVALID_TAG`.
 
 ### Fronteras de validez y significado de `VALID`
 
@@ -592,14 +683,19 @@ continúa pendiente.
 
 `verify_encoded_record(...)` evalúa en este orden:
 
-1. Comprueba que exista exactamente un elemento CBOR bien formado. Si falla:
+1. Comprueba que `raw_bytes` no exceda 65536 octetos y analiza exactamente un
+   elemento CBOR mediante un parser configurado con el presupuesto de
+   descubrimiento. Un exceso de presupuesto produce
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. Framing incompleto,
+   truncamiento, break inesperado o bytes sobrantes producen
    `MALFORMED_RECORD / MALFORMED_CBOR`.
 2. Comprueba validez CBOR básica y de tags con enrutamiento especial. Si la
    condición detectada es una clave duplicada, produce
    `MALFORMED_RECORD / DUPLICATE_MAP_KEY`; si es otra violación de validez,
    produce `MALFORMED_RECORD / INVALID_CBOR`. La duplicación se clasifica de
    forma específica aunque la biblioteca la detecte dentro de su modo de
-   validación básica.
+   validación básica. Todo el recorrido permanece bajo el presupuesto de
+   descubrimiento.
 3. Comprueba la estructura lógica mínima para descubrir las versiones: el
    elemento exterior es un array, posee al menos las posiciones 0, 1 y 2,
    `domain` es text string, y `schema_version` y `mechanism_version` son enteros
@@ -612,9 +708,12 @@ continúa pendiente.
    versiones con representaciones mínimas, y ausencia de representaciones
    alternativas en las posiciones 0 a 2. Si falla:
    `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
-5. Comprueba si `schema_version` y `mechanism_version` están soportadas. Si
-   cualquiera no está soportada: `UNSUPPORTED_VERSION`. La evaluación se
-   detiene aquí y no se aplican reglas de v1 al resto.
+5. Comprueba primero que `schema_version` y `mechanism_version` estén dentro de
+   `0..2^63-1`; un exceso produce
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. Solo entonces comprueba
+   soporte. Si cualquiera dentro del rango no está soportada, produce
+   `UNSUPPORTED_VERSION`. La evaluación se detiene y no se aplican reglas de v1
+   al resto.
 6. Para v1 soportado, comprueba estructura y pertenencia de tipos: array
    exterior con longitud lógica 10, `domain` exacto, tipos exteriores, tipos
    permitidos de `payload`, tipos prohibidos, tags válidos pero prohibidos,
@@ -630,8 +729,10 @@ continúa pendiente.
    representación única de cada valor permitido. Si falla:
    `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
 9. Resuelve la clave mediante el `key_id` externo. Si falla: `UNKNOWN_KEY`.
-10. Verifica el `tag` externo sobre los bytes exactos. Si falla:
-    `INVALID_TAG`.
+10. Comprueba que el `tag` externo sea una secuencia de exactamente 32 octetos y
+    la compara con el HMAC-SHA-256 completo sobre los bytes exactos, sin
+    truncamiento ni salida temprana dependiente del primer octeto diferente. Si
+    la longitud o el valor difieren: `INVALID_TAG`; si coincide, continúa.
 11. Evalúa `SequenceContextCandidateV1` cuando exista. Si el ledger es distinto,
     produce `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`; si la secuencia es
     distinta, produce `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`.
@@ -648,15 +749,17 @@ precedencia evita que dos implementaciones elijan detalles diferentes ante una
 entrada con varios defectos. `encode_record(logical_record)` aplica las
 validaciones lógicas equivalentes, pero no produce errores de parsing o
 canonicalidad de raw bytes. Las fases 1 y 2 son comprobaciones genéricas de
-CBOR; las fases 3 y 4 comprueban únicamente el sobre estable de descubrimiento;
-y las fases 6, 7 y 8 solo se ejecutan para versiones soportadas.
+CBOR bajo el presupuesto de descubrimiento; las fases 3 y 4 comprueban únicamente
+el sobre estable; y las fases 6 a 12 solo se ejecutan para v1 soportado.
 
 Ninguna regla de canonicalidad específica de v1 se aplica al cuerpo de una
-versión desconocida. Una versión desconocida correctamente identificada produce
-`UNSUPPORTED_VERSION` aunque el resto sea no canónico según v1, siempre que el
-elemento completo siga siendo CBOR bien formado y básicamente válido. CBOR
-truncado o inválido continúa fallando en las fases 1 o 2. El orden completo es
-**CANDIDATO NO NORMATIVO**.
+versión desconocida. Una versión desconocida produce `UNSUPPORTED_VERSION` solo
+si el elemento completo cumple el presupuesto, es CBOR bien formado y
+básicamente válido, no contiene duplicados, y el sobre es interpretable y
+determinista con versiones dentro del rango. Un exceso de presupuesto produce
+`ENCODING_PROFILE_VIOLATION` antes de `UNSUPPORTED_VERSION`; CBOR truncado o
+inválido continúa fallando en las fases 1 o 2. El orden completo es **CANDIDATO
+NO NORMATIVO**.
 
 `validate_encoded_record(raw_bytes)` ejecuta únicamente las fases 1 a 8 y, si
 son satisfactorias, devuelve `ValidatedEncodedRecord` en lugar de `VALID`.
@@ -804,7 +907,7 @@ previstos para B son:
 
 | Vector | Propósito mínimo |
 |---|---|
-| Registro mínimo válido para MEC-A1 | Comprobar que perfil y canonicalidad válidos, versión soportada, `key_id` resoluble, `tag` válido y contexto ausente o exactamente coincidente pueden alcanzar `VALID` de MEC-A1; no afirma aceptación por el schema de aplicación. |
+| Registro mínimo válido para MEC-A1 | Comprobar que perfil y canonicalidad válidos, versión soportada, `key_id` resoluble, tag externo de exactamente 32 octetos con la salida HMAC-SHA-256 completa y contexto ausente o exactamente coincidente pueden alcanzar `VALID` de MEC-A1; no afirma aceptación por el schema de aplicación. |
 | Unicode multibyte | Probar UTF-8 y la política Unicode fuera de ASCII. |
 | Cadenas vacías | Distinguir cadenas permitidas en payload de campos exteriores no vacíos, ausencia y null. |
 | Límites de enteros | Cubrir int64 mínimo y máximo, cero, negativos permitidos y valores fuera de rango. |
@@ -817,13 +920,13 @@ previstos para B son:
 | Clave duplicada | Usar claves textuales individualmente válidas con dos ocurrencias equivalentes y exigir `MALFORMED_RECORD / DUPLICATE_MAP_KEY`, tanto si el parser preserva pares como si una biblioteca estricta reporta la duplicación como error de validez. |
 | Longitud no mínima | Cubrir, sobre valores admitidos, un entero con representación no mínima, text string, array y map con longitud indefinida, incluido como subcaso un array exterior indefinido con exactamente diez elementos lógicamente admitidos; todos esperan `MALFORMED_RECORD / NON_CANONICAL_ENCODING`. |
 | Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento mediante `MALFORMED_RECORD` y detalle `MALFORMED_CBOR`. |
-| Overflow | Cubrir longitudes, enteros, contadores y cálculos de tamaño fuera de rango. |
-| Tipos y valores prohibidos | Cubrir byte string definida e indefinida dentro de payload, float, cero negativo flotante, NaN, infinito, bignum, null, tag y clave no textual; todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. |
+| Límite excedido | Cubrir `raw_bytes` de 65537 octetos, profundidad estructural 10 contando el array exterior, array de 257 elementos, map de 257 pares y text string o byte string de 16385 octetos durante descubrimiento; también para versión desconocida, todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. |
+| Tipos y valores prohibidos | Cubrir byte string definida e indefinida dentro de payload, float, cero negativo flotante, NaN, infinito, bignum, null, tag, clave no textual y texto numérico donde se exige entero; todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. |
 | Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados mediante `MALFORMED_RECORD` con detalle `INVALID_CBOR`. |
 | Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
-| Versión desconocida | Cubrir los cuatro subcasos de despacho definidos después de la tabla y demostrar que una versión desconocida no se interpreta mediante reglas completas de v1. |
-| Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
-| Contexto secuencial inválido con tag válido | Con registro autenticado `ledger_id = L`, `sequence = 5`, `tag` válido, `key_id` resoluble y contexto `(L, 6)`, exigir `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`; como subcaso, registro con `L1` y contexto con `L2` exige `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`. |
+| Versión desconocida | Cubrir los siete subcasos de despacho definidos después de la tabla y demostrar que presupuesto y rango se aplican antes de `UNSUPPORTED_VERSION`, sin interpretar el cuerpo mediante reglas completas de v1. |
+| Tag inválido | Cubrir tags externos de 31 y 33 octetos, uno de 32 octetos con un bit modificado y otro de 32 octetos completamente distinto; todos producen `INVALID_TAG`. |
+| Contexto secuencial inválido con tag válido | Con registro autenticado `ledger_id = L`, `sequence = 5`, tag externo coincidente de exactamente 32 octetos, `key_id` resoluble y contexto `(L, 6)`, exigir `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`; como subcaso, registro con `L1` y contexto con `L2` exige `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`. |
 
 La suite de vectores de ADR-001 valida codificación, mecanismo y contexto; no
 sustituye una futura suite del schema de aplicación. Antes de una integración
@@ -831,20 +934,31 @@ productiva deberán existir fixtures de schema separados.
 
 El vector `Versión desconocida` incluye, sin generar todavía sus bytes:
 
-1. sobre de descubrimiento determinista, versión desconocida y resto compatible
-   con v1: `UNSUPPORTED_VERSION`;
-2. sobre de descubrimiento determinista, versión desconocida y resto bien
-   formado y CBOR-válido, pero no canónico conforme a las reglas completas de
-   v1: también `UNSUPPORTED_VERSION`;
-3. campo de versión con tipo incorrecto:
+1. `schema_version = 0`, dentro del rango y determinista:
+   `UNSUPPORTED_VERSION`;
+2. `schema_version = 2`, dentro del rango y determinista:
+   `UNSUPPORTED_VERSION`;
+3. `schema_version = 2^63-1`, dentro del rango: `UNSUPPORTED_VERSION`;
+4. `schema_version = 2^63`:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`;
-4. campo de versión codificado de forma no mínima:
-   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+5. versión dentro del rango con representación no mínima:
+   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`;
+6. versión desconocida con cuerpo bien formado, válido y dentro del presupuesto,
+   aunque no sea canónico conforme a reglas completas de v1:
+   `UNSUPPORTED_VERSION`;
+7. versión desconocida cuyo cuerpo excede el presupuesto de profundidad,
+   cardinalidad, string o tamaño:
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
 
-Los dos primeros subcasos demuestran que el verificador no interpreta una
-versión desconocida mediante reglas del perfil v1. Los subcasos que esperan
-`UNSUPPORTED_VERSION` no contienen claves duplicadas, UTF-8 inválido ni otra
-invalidez CBOR genérica.
+Los subcasos que esperan `UNSUPPORTED_VERSION` no contienen claves duplicadas,
+UTF-8 inválido ni otra invalidez CBOR genérica. Demuestran que el verificador no
+interpreta una versión desconocida mediante reglas completas de v1, pero tampoco
+permite que omita el presupuesto de recursos.
+
+Todo vector que declare un tag válido usa exactamente los 32 octetos de la
+salida HMAC-SHA-256 completa, sin truncamiento, y solo permite continuar cuando
+coincide. El vector `Tag inválido` no genera todavía tags: fija únicamente sus
+longitudes y resultados candidatos.
 
 El vector `Clave duplicada` debe producir el mismo resultado con un parser que
 preserve todos los pares y con una biblioteca estricta que señale la duplicación
@@ -946,6 +1060,13 @@ PENDING.
   `CANDIDATO NO NORMATIVO` solo si el investigador acepta primero esta propuesta
   para experimentación.
 - Estas fronteras no modifican ADR-004 ni añaden garantía de frescura.
+- El despacho de versiones queda acotado antes de interpretar el cuerpo; una
+  versión desconocida no permite omitir límites de recursos.
+- El rango `0..2^63-1` hace reproducible la clasificación de versiones entre
+  implementaciones.
+- `TagCandidateV1` congela como candidato el HMAC-SHA-256 completo de 32 octetos,
+  sin truncamiento; su codificación textual continúa fuera del alcance.
+- Estas reglas no añaden frescura, resistencia a rollback ni ancla externa.
 - No se modifica la semántica vigente de RQ-01, THR-P1 ni los ataques pendientes.
 
 ## Fuentes técnicas consideradas
