@@ -3,7 +3,7 @@ decision_id: ADR-004
 title: External Anchor and Checkpoint Externalization Boundary
 version: 0.2.1
 status: APPROVED
-date: 2026-07-29
+date: 2026-07-30
 decided_by: Alan Espinoza
 ---
 
@@ -21,6 +21,26 @@ Los contratos `docs/07-checkpoint-protocol.md` y
 `docs/08-anchor-protocol.md` todavía no contienen una especificación normativa
 implementable. Este ADR autoriza que sus especificaciones derivadas se redacten
 en tareas posteriores y separadas conforme a `docs/01-change-control.md`.
+
+## Historial de aprobación
+
+- ADR-004 v0.2.0 fue aprobada el `2026-07-29` como decisión inicial de la
+  frontera arquitectónica.
+- ADR-004 v0.2.1 fue aprobada el `2026-07-30` como revisión exclusivamente
+  documental.
+- v0.2.1 restaura la recomendación técnica no vinculante exigida por la
+  convención de ADR.
+- v0.2.1 sustituye documentalmente a v0.2.0 como versión vigente.
+- v0.2.1 no modifica la resolución científica, los papeles de A–F, el alcance
+  experimental, `THR-P1`, la verificación independiente, la ausencia de recibo
+  importado por el POS, los bloqueos existentes ni los protocolos, amenazas,
+  ataques o métricas pendientes.
+
+> Apruebo ADR-004 versión 0.2.1 como revisión documental de la versión 0.2.0. La restauración de la recomendación técnica no vinculante no modifica la resolución científica aprobada, los papeles de las alternativas A–F ni el alcance experimental. ADR-004 v0.2.1 pasa a ser la versión vigente aprobada y sustituye documentalmente a v0.2.0.
+
+Decidido por: Alan Espinoza
+
+Fecha de aprobación de v0.2.1: 2026-07-30
 
 ## Contexto
 
