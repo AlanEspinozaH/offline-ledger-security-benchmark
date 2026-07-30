@@ -359,9 +359,27 @@ Cada fila requiere una resolución expresa, cualquiera sea el formato base.
 
 ## Plan de vectores requerido antes de aprobación
 
-Los vectores deberán declarar valor lógico, contexto, resultado esperado y, solo
-cuando el perfil sea aprobado, bytes exactos y autenticador. En esta versión no
-se generan bytes normativos definitivos.
+### 1. Vectores candidatos de evaluación
+
+Antes de la aprobación podrán generarse, para cada perfil candidato:
+
+- valor lógico de entrada;
+- contexto;
+- resultado esperado;
+- bytes candidatos exactos;
+- representación hexadecimal;
+- autenticador candidato, cuando sea necesario para probar el comportamiento;
+- identificador y versión del perfil candidato;
+- herramienta o implementación que produjo el resultado.
+
+Cada elemento deberá marcarse explícitamente como **CANDIDATO NO NORMATIVO**.
+Los bytes candidatos pueden cambiar mientras el perfil permanezca DRAFT, no
+autorizan implementación productiva, no constituyen el mensaje normativo de
+MEC-A1 y no pueden presentarse como evidencia de conformidad con una versión
+aprobada.
+
+Los siguientes veinte casos forman el plan de evaluación. Su presencia no fija
+todavía bytes, resultados ni condiciones de rechazo normativas:
 
 | Vector | Propósito mínimo |
 |---|---|
@@ -386,15 +404,56 @@ se generan bytes normativos definitivos.
 | Ambigüedad número/cadena JCS | Demostrar que un campo int64 no acepta alternativamente 42 y "42" como representaciones del mismo campo lógico; el tipo quedará fijado por campo y versión. |
 | Contexto secuencial inválido con tag válido | Demostrar que el valor sequence fue autenticado, pero falla continuidad mediante INVALID_SEQUENCE_CONTEXT y no INVALID_TAG. |
 
-Antes de solicitar aprobación, el conjunto deberá incluir:
+### 2. Validación previa a la aprobación
 
-- vectores positivos y negativos independientes de una API concreta;
+Antes de solicitar la aprobación del investigador, el expediente deberá disponer
+de:
+
+- bytes candidatos completos para las alternativas finalistas;
 - representación hexadecimal de todos los bytes candidatos;
-- resultados coincidentes de al menos dos implementaciones o herramientas
-  independientes;
-- pruebas de que duplicados y formas no canónicas se detectan antes de perder
-  información;
-- límites, versión del perfil y fuentes exactas de cada expectativa.
+- resultados coincidentes de al menos dos implementaciones, herramientas o
+  codificadores de referencia independientes;
+- vectores positivos y negativos;
+- evidencia de rechazo de duplicados y formas no deterministas;
+- versión exacta de cada perfil candidato;
+- diferencias explícitas entre alternativas cuando produzcan bytes distintos.
+
+Esta validación es necesaria para que el investigador pueda comparar resultados
+concretos y aprobar posteriormente una decisión informada. Los artefactos siguen
+siendo **CANDIDATOS NO NORMATIVOS** durante esta etapa.
+
+### 3. Vectores normativos
+
+Solo después de que el investigador apruebe una versión concreta del perfil:
+
+- se congelarán los bytes definitivos;
+- se les asignará carácter normativo;
+- se congelarán resultados, límites y condiciones de rechazo;
+- los vectores aprobados pasarán a ser pruebas de conformidad;
+- cualquier cambio posterior requerirá una nueva versión.
+
+## Implementaciones de referencia
+
+### Permitido antes de la aprobación
+
+- scripts experimentales;
+- codificadores de referencia;
+- herramientas independientes;
+- prototipos mínimos empleados exclusivamente para producir y comparar vectores
+  candidatos.
+
+### No autorizado todavía
+
+- implementación productiva de MEC-A1;
+- integración del perfil en el flujo del POS;
+- schema normativo;
+- API normativa;
+- desbloqueo de MEC-A1;
+- uso de bytes candidatos como contrato estable.
+
+Los codificadores de referencia no deben presentarse como implementación de
+MEC-A1 ni como prueba suficiente por sí solos. Esta tarea documental no genera
+bytes candidatos ni normativos y no autoriza crear esas herramientas.
 
 ## Riesgos transversales
 
