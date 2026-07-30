@@ -109,7 +109,8 @@ perfil PT2 aún debe ser más estricto que CBOR genérico para excluir tipos,
 representaciones y opciones no necesarias.
 
 Su riesgo dominante es aceptar opciones CBOR no cerradas o utilizar un decoder
-que pierda duplicados o no canonicalidad. La propuesta concreta se define en
+que pierda pares de maps antes del despacho o no canonicalidad. La propuesta
+concreta se define en
 `Perfil candidato finalista`. La clasificación es técnica, no vinculante y puede
 cambiar mientras ADR-001 siga `DRAFT`.
 
@@ -141,7 +142,7 @@ producirán sus bytes candidatos completos en la siguiente etapa.
 | Identificador | Bytes o texto propio por definir | Byte string candidato de 16 octetos | Convención textual adicional |
 | Unicode | UTF-8 y política totalmente propias | UTF-8 con política explícita | JCS preserva texto; parser debe ser estricto |
 | Estructuras | Gramática recursiva propia | Arrays y mapas nativos restringidos | Arrays y objetos nativos restringidos |
-| Duplicados | Rechazo implementado por PT2 | Decoder debe detectarlos antes de perderlos | Parser debe detectarlos antes de perderlos |
+| Duplicados | Rechazo implementado por PT2 | El parser conserva pares; v1 aplica su igualdad textual antes de perderlos | Parser debe detectarlos antes de perderlos |
 | Null y float | Decisión y tags propios | Excluidos por el candidato | JSON los admite; el perfil tendría que cerrarlos |
 | Versionado y dominio | Cabecera o framing propios | Posiciones exteriores candidatas fijas | Propiedad o framing exterior adicional |
 | Tamaño | Potencialmente menor | Compacto | Generalmente mayor |
@@ -231,8 +232,9 @@ invariantes de canonicalidad del sobre candidato:
 - el array exterior usa longitud definida;
 - su longitud está codificada mínimamente;
 - `domain` usa representación determinista;
-- los campos de versión usan representación mínima, sin tags ni
-  representaciones alternativas.
+- los campos de versión usan representación mínima y no emplean
+  representaciones alternativas del entero; un tag ya incumple el tipo directo
+  en la comprobación lógica anterior.
 
 La longitud definida continúa siendo una invariante del sobre candidato, pero
 su incumplimiento se clasifica como canonicalidad, no como falta de pertenencia
@@ -433,23 +435,20 @@ break inesperado o bytes sobrantes después del único elemento exterior esperad
 
 #### `INVALID_CBOR`
 
-Un elemento CBOR bien formado pero inválido conforme a las restricciones
-básicas de CBOR o de tags, excepto claves duplicadas. Incluye UTF-8 inválido
-dentro de un text string, sustitutos aislados representados en una secuencia no
-válida, contenido inválido de un tag reconocido u otra violación de validez
-básica identificada antes de aplicar el perfil PT2. Un tag CBOR válido pero
-prohibido por PT2 continúa siendo `ENCODING_PROFILE_VIOLATION`.
+Un elemento CBOR bien formado pero inválido conforme a condiciones genéricas
+independientes de la semántica de tags. Incluye UTF-8 inválido dentro de un text
+string, sustitutos aislados representados en una secuencia no válida, valores
+simples reservados u otra condición de estructura genérica expresamente
+identificada antes de aplicar un perfil PT2 concreto. No incluye validaciones
+dependientes del número de tag ni la unicidad semántica de claves.
 
 #### `DUPLICATE_MAP_KEY`
 
-Una clave duplicada es una condición de validez CBOR básica que se expone con
-este detalle específico y nunca se degrada a `INVALID_CBOR`. El parser o adapter
-que procese `raw_bytes` debe preservar todos los pares de mapas o devolver una
-señal específica de clave duplicada. Si una biblioteca estricta rechaza el
-elemento por duplicación durante su validación básica, el adapter mapea el error
-a `MALFORMED_RECORD / DUPLICATE_MAP_KEY`, no a
-`MALFORMED_RECORD / INVALID_CBOR`. Un decoder que descarte silenciosamente una
-ocurrencia no es apto para validar bytes adversariales del perfil candidato.
+Detalle estable específico de `PT2-CBOR-AUTH-RECORD-CANDIDATE-v1`, aplicado
+después del despacho de una versión soportada. Dos claves textuales v1 son
+duplicadas cuando representan la misma secuencia de valores escalares Unicode,
+conforme a la igualdad cerrada definida más adelante. No es una regla genérica
+para los cuerpos de versiones desconocidas ni se degrada a `INVALID_CBOR`.
 
 #### `ENCODING_PROFILE_VIOLATION`
 
@@ -492,6 +491,56 @@ nuevo: ya forma parte de MEC-A1 en `docs/06-mechanism-specifications.md`. Cuando
 una versión es desconocida no se interpreta el resto con reglas de v1; solo se
 aplican las comprobaciones genéricas de CBOR y del sobre estable necesarias para
 reconocer de forma segura sus campos de versión.
+
+### Tratamiento candidato de tags antes y después del despacho
+
+El conjunto candidato de tags reconocidos semánticamente por el parser de
+ADR-001 es exactamente `recognized_semantic_tags = ∅`. Esta regla es
+**CANDIDATO NO NORMATIVO** y hace independiente la clasificación del registro de
+tags que implemente una biblioteca.
+
+Antes del despacho, el parser reconoce únicamente la estructura genérica CBOR
+de un tag: su número y exactamente un elemento CBOR envuelto. No aplica
+semántica registrada o convencional a ningún número, no interpreta el tag 0
+como fecha, el tag 1 como epoch, los tags 2 y 3 como bignums, ni tags de URI,
+UUID, Base64 u otros. Tampoco valida que el valor envuelto satisfaga reglas
+semánticas asociadas externamente al número de tag.
+
+La clasificación estructural queda cerrada así:
+
+- una cabecera de tag truncada o incompleta produce
+  `MALFORMED_RECORD / MALFORMED_CBOR`;
+- un tag sin un elemento envuelto completo produce
+  `MALFORMED_RECORD / MALFORMED_CBOR`;
+- un elemento envuelto con UTF-8 inválido u otra invalidez CBOR básica
+  independiente de tags produce `MALFORMED_RECORD / INVALID_CBOR`;
+- un tag y su elemento envuelto estructuralmente válidos no producen
+  `INVALID_CBOR` por una semántica externa del número de tag.
+
+En el sobre estable, un tag alrededor de `domain`, `schema_version` o
+`mechanism_version` impide que la posición tenga directamente el tipo requerido
+y produce `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. El parser no elimina
+ni interpreta el tag para recuperar indirectamente el valor envuelto.
+
+Después de despachar v1, todo tag CBOR bien formado en cualquier posición
+prohibida por el perfil produce
+`MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. Esto comprende tag 0 alrededor
+de un integer o de un text string, tag 1, tags 2 y 3, y cualquier número de tag
+registrado o no registrado. La prohibición del tipo tag tiene precedencia sobre
+una representación no canónica del tag o del valor envuelto, siempre que la
+entrada sea CBOR bien formada y básicamente válida.
+
+Para una versión desconocida, un tag bien formado ubicado únicamente en el
+cuerpo posterior a las posiciones de descubrimiento se recorre estructuralmente
+bajo el presupuesto de recursos, no recibe semántica de tag, no se rechaza con
+las reglas de tipos de v1 y no impide `UNSUPPORTED_VERSION`. Conservan
+precedencia el exceso de presupuesto, el framing mal formado, UTF-8 inválido,
+otra invalidez CBOR independiente de semántica de tags y los errores del sobre
+estable.
+
+Una futura versión podrá prohibir tags o definir su propia semántica después del
+despacho. No podrá alterar retroactivamente el parser genérico de esta familia
+sin una nueva decisión expresa.
 
 ### Contrato candidato de `TagCandidateV1`
 
@@ -599,8 +648,9 @@ Esta propuesta separa tres niveles conceptuales. La separación completa es
 #### Nivel 1 — Validez de codificación y perfil
 
 `validate_encoded_record(raw_bytes)` es responsable de CBOR bien formado,
-validez CBOR básica, duplicados, descubrimiento y soporte de versión, tipos y
-rangos del perfil de codificación, límites y canonicalidad. En caso
+validez CBOR básica, descubrimiento y soporte de versión, duplicados conforme al
+perfil v1 ya despachado, tipos y rangos del perfil de codificación, límites y
+canonicalidad. En caso
 satisfactorio devuelve `ValidatedEncodedRecord`; no devuelve `VALID`.
 
 Este nivel no resuelve claves, no verifica HMAC ni contexto secuencial, y no
@@ -689,19 +739,18 @@ continúa pendiente.
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. Framing incompleto,
    truncamiento, break inesperado o bytes sobrantes producen
    `MALFORMED_RECORD / MALFORMED_CBOR`.
-2. Comprueba validez CBOR básica y de tags con enrutamiento especial. Si la
-   condición detectada es una clave duplicada, produce
-   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`; si es otra violación de validez,
-   produce `MALFORMED_RECORD / INVALID_CBOR`. La duplicación se clasifica de
-   forma específica aunque la biblioteca la detecte dentro de su modo de
-   validación básica. Todo el recorrido permanece bajo el presupuesto de
-   descubrimiento.
+2. Comprueba la validez CBOR independiente de versión: UTF-8, valores simples
+   reservados y estructura genérica, recorriendo el elemento completo bajo el
+   presupuesto de descubrimiento. No aplica semántica de tags, no comprueba
+   unicidad semántica de claves y no colapsa maps. Una violación produce
+   `MALFORMED_RECORD / INVALID_CBOR`.
 3. Comprueba la estructura lógica mínima para descubrir las versiones: el
    elemento exterior es un array, posee al menos las posiciones 0, 1 y 2,
-   `domain` es text string, y `schema_version` y `mechanism_version` son enteros
-   no negativos. Todavía no comprueba longitud exacta 10, literal exacto de
-   `domain`, tipos del cuerpo ni representación definida o mínima del array
-   exterior. Si falla:
+   `domain` es text string, y `schema_version` y `mechanism_version` son
+   enteros no negativos. Un tag en cualquiera de esas posiciones no satisface
+   el tipo directo requerido. Todavía no comprueba longitud exacta 10, literal
+   exacto de `domain`, tipos del cuerpo ni representación definida o mínima del
+   array exterior. Si falla:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
 4. Comprueba la representación determinista del sobre de descubrimiento: array
    exterior de longitud definida, longitud codificada mínimamente, `domain` y
@@ -716,18 +765,20 @@ continúa pendiente.
    al resto.
 6. Para v1 soportado, comprueba estructura y pertenencia de tipos: array
    exterior con longitud lógica 10, `domain` exacto, tipos exteriores, tipos
-   permitidos de `payload`, tipos prohibidos, tags válidos pero prohibidos,
-   bignums, floats, null, byte strings en `payload` y claves no textuales. Si
-   falla:
-   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
+   permitidos de `payload`, tipos prohibidos, tags bien formados pero prohibidos,
+   bignums, floats, null y byte strings en `payload`. Primero rechaza claves no
+   textuales con `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`; solo para
+   claves textuales detecta duplicados mediante la igualdad v1 y produce
+   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`. Cualquier otro fallo de estructura o
+   tipo produce `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
 7. Comprueba valores y límites del perfil: rangos, longitudes lógicas, tamaño
    total, profundidad, cardinalidad y límites de textos, arrays y maps. Si
    falla:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
-8. Para un valor admitido por completo, comprueba la codificación determinista:
-   enteros y longitudes mínimos, longitudes definidas, orden de mapas y
-   representación única de cada valor permitido. Si falla:
-   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+8. Para un valor admitido por completo y con claves únicas, comprueba la
+   codificación determinista: enteros y longitudes mínimos, longitudes
+   definidas, orden de mapas y representación única de cada valor permitido. Si
+   falla: `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
 9. Resuelve la clave mediante el `key_id` externo. Si falla: `UNKNOWN_KEY`.
 10. Comprueba que el `tag` externo sea una secuencia de exactamente 32 octetos y
     la compara con el HMAC-SHA-256 completo sobre los bytes exactos, sin
@@ -750,16 +801,18 @@ entrada con varios defectos. `encode_record(logical_record)` aplica las
 validaciones lógicas equivalentes, pero no produce errores de parsing o
 canonicalidad de raw bytes. Las fases 1 y 2 son comprobaciones genéricas de
 CBOR bajo el presupuesto de descubrimiento; las fases 3 y 4 comprueban únicamente
-el sobre estable; y las fases 6 a 12 solo se ejecutan para v1 soportado.
+el sobre estable; y las fases 6 a 12 solo se ejecutan para v1 soportado. En
+particular, la fase 2 no aplica semántica de tags, igualdad de claves ni una
+conversión de maps a diccionarios.
 
-Ninguna regla de canonicalidad específica de v1 se aplica al cuerpo de una
-versión desconocida. Una versión desconocida produce `UNSUPPORTED_VERSION` solo
-si el elemento completo cumple el presupuesto, es CBOR bien formado y
-básicamente válido, no contiene duplicados, y el sobre es interpretable y
-determinista con versiones dentro del rango. Un exceso de presupuesto produce
-`ENCODING_PROFILE_VIOLATION` antes de `UNSUPPORTED_VERSION`; CBOR truncado o
-inválido continúa fallando en las fases 1 o 2. El orden completo es **CANDIDATO
-NO NORMATIVO**.
+Ninguna regla de canonicalidad ni igualdad de claves específica de v1 se aplica
+al cuerpo de una versión desconocida. Una versión desconocida produce
+`UNSUPPORTED_VERSION` si el elemento completo cumple el presupuesto, es CBOR
+bien formado y básicamente válido de manera independiente de tags y duplicados,
+y el sobre es interpretable y determinista con versiones dentro del rango. Un
+exceso de presupuesto produce `ENCODING_PROFILE_VIOLATION` antes de
+`UNSUPPORTED_VERSION`; CBOR truncado o inválido continúa fallando en las fases
+1 o 2. El orden completo es **CANDIDATO NO NORMATIVO**.
 
 `validate_encoded_record(raw_bytes)` ejecuta únicamente las fases 1 a 8 y, si
 son satisfactorias, devuelve `ValidatedEncodedRecord` en lugar de `VALID`.
@@ -789,22 +842,64 @@ ejemplo:
 - un map con claves textuales válidas, pero en orden incorrecto, produce
   `NON_CANONICAL_ENCODING`.
 
-`DUPLICATE_MAP_KEY` conserva precedencia anterior para detectar la duplicación
-antes de que un decoder pierda una ocurrencia. Esta regla también es
-**CANDIDATO NO NORMATIVO**.
+Para v1, `DUPLICATE_MAP_KEY` conserva precedencia sobre
+`NON_CANONICAL_ENCODING` cuando una clave duplicada también usa una
+representación no mínima o indefinida. Esta regla también es **CANDIDATO NO
+NORMATIVO**.
 
 ### Duplicados y despacho de versiones
 
-Las claves duplicadas son una condición de validez CBOR genérica, no una regla
-específica de v1. Por ello, un elemento con duplicados produce
-`DUPLICATE_MAP_KEY` antes del despacho de versión. Una versión desconocida solo
-produce `UNSUPPORTED_VERSION` cuando el elemento es bien formado, no contiene
-errores de validez CBOR y el sobre de descubrimiento es determinista.
+El parser independiente de versión conserva todos los pares de cada map, su
+orden de aparición y, cuando resulte necesario, el intervalo exacto de bytes de
+cada clave. No construye un diccionario que sobrescriba entradas, no elimina
+ocurrencias, no aplica una relación genérica de igualdad entre claves y no
+rechaza un map por duplicados semánticos antes de conocer la versión. Esta
+representación interna no crea una clase ni una API normativa.
 
-El subcaso de versión desconocida con cuerpo no canónico según v1 no usa claves
-duplicadas, UTF-8 inválido ni tags con contenido inválido. Puede usar una forma
-CBOR bien formada y válida que no satisfaría las reglas deterministas completas
-de v1, las cuales no se aplican antes del despacho.
+Un decoder que obligatoriamente colapse claves, descarte ocurrencias o aplique
+una igualdad no configurable antes del despacho no es apto como parser
+adversarial independiente para esta familia candidata.
+
+Cuando las versiones son desconocidas y el sobre es válido, no se evalúa
+igualdad de claves en los maps del cuerpo. Dos claves iguales byte a byte o dos
+claves que decodifican al mismo valor mediante representaciones diferentes no
+producen por sí solas `DUPLICATE_MAP_KEY`. El resultado sigue siendo
+`UNSUPPORTED_VERSION` si el elemento es bien formado, cumple la validez CBOR
+independiente de duplicados, respeta el presupuesto y presenta un sobre válido y
+determinista. Cada futura versión debe definir después del despacho su propio
+modelo de claves, igualdad y unicidad.
+
+#### Igualdad candidata de claves para v1
+
+Todas las claves admitidas por `PT2-CBOR-AUTH-RECORD-CANDIDATE-v1` son text
+strings. Dos claves textuales v1 son iguales si, después de validar UTF-8,
+representan exactamente la misma secuencia de valores escalares Unicode.
+
+La comparación no normaliza Unicode, no aplica NFC, NFD, NFKC ni NFKD, no hace
+case folding, no depende de locale ni de la presentación visual, y tampoco
+depende de los bytes CBOR usados para expresar la longitud o de que esa
+representación sea canónica. Por tanto:
+
+- una clave `"a"` con longitud mínima y otra `"a"` con longitud no mínima son
+  duplicadas;
+- una clave `"texto"` definida y otra `"texto"` expresada mediante chunks de
+  longitud indefinida son duplicadas si ambas son CBOR válidas;
+- U+00E9 y U+0065 U+0301 no son duplicadas;
+- `"A"` y `"a"` no son duplicadas.
+
+La detección ocurre después de confirmar que v1 está soportada y después de
+validar UTF-8, pero antes de construir un map que pueda perder ocurrencias y
+antes de comprobar la canonicalidad completa. La precedencia v1 es:
+
+1. UTF-8 inválido: `MALFORMED_RECORD / INVALID_CBOR`;
+2. clave de tipo distinto de text string:
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`;
+3. dos claves textuales con la misma secuencia de valores escalares:
+   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`;
+4. claves válidas y distintas con representación no determinista u orden
+   incorrecto: `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+
+No se intenta clasificar como duplicadas dos claves de tipos prohibidos.
 
 ## Semántica secuencial candidata
 
@@ -917,14 +1012,14 @@ previstos para B son:
 | Array | Probar orden, array vacío y tipos de elementos. |
 | Orden determinista de map textual | Usar solo claves textuales permitidas, fijar el valor lógico, exigir los bytes candidatos en core deterministic encoding y verificar coincidencia entre dos codificadores independientes. |
 | Orden textual no determinista | Usar el mismo map y las mismas claves textuales, presentar deliberadamente los pares en otro orden y esperar `MALFORMED_RECORD` con detalle `NON_CANONICAL_ENCODING`. |
-| Clave duplicada | Usar claves textuales individualmente válidas con dos ocurrencias equivalentes y exigir `MALFORMED_RECORD / DUPLICATE_MAP_KEY`, tanto si el parser preserva pares como si una biblioteca estricta reporta la duplicación como error de validez. |
+| Clave duplicada | Cubrir dos claves `"a"` con codificación idéntica, una `"a"` mínima y otra con longitud no mínima, y una clave textual definida frente a otra indefinida que reconstruye la misma secuencia Unicode; todas producen `MALFORMED_RECORD / DUPLICATE_MAP_KEY`. Como control no duplicado, U+00E9 y U+0065 U+0301 permanecen distintas por la política sin normalización. |
 | Longitud no mínima | Cubrir, sobre valores admitidos, un entero con representación no mínima, text string, array y map con longitud indefinida, incluido como subcaso un array exterior indefinido con exactamente diez elementos lógicamente admitidos; todos esperan `MALFORMED_RECORD / NON_CANONICAL_ENCODING`. |
 | Truncamiento | Cubrir cortes en cabecera, longitud, UTF-8 multibyte y anidamiento mediante `MALFORMED_RECORD` y detalle `MALFORMED_CBOR`. |
 | Límite excedido | Cubrir `raw_bytes` de 65537 octetos, profundidad estructural 10 contando el array exterior, array de 257 elementos, map de 257 pares y text string o byte string de 16385 octetos durante descubrimiento; también para versión desconocida, todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. |
-| Tipos y valores prohibidos | Cubrir byte string definida e indefinida dentro de payload, float, cero negativo flotante, NaN, infinito, bignum, null, tag, clave no textual y texto numérico donde se exige entero; todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`. |
+| Tipos y valores prohibidos | Cubrir byte string definida e indefinida dentro de payload, float, cero negativo flotante, NaN, infinito, bignum, null, tag 0 alrededor de integer, tag 0 alrededor de text string, tag 1, tag arbitrario no registrado, clave no textual y texto numérico donde se exige entero; todos esperan `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`, nunca `INVALID_CBOR` por semántica externa del tag. |
 | Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados mediante `MALFORMED_RECORD` con detalle `INVALID_CBOR`. |
 | Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
-| Versión desconocida | Cubrir los siete subcasos de despacho definidos después de la tabla y demostrar que presupuesto y rango se aplican antes de `UNSUPPORTED_VERSION`, sin interpretar el cuerpo mediante reglas completas de v1. |
+| Versión desconocida | Cubrir los subcasos de despacho definidos después de la tabla y demostrar que presupuesto y rango se aplican antes de `UNSUPPORTED_VERSION`, sin interpretar el cuerpo mediante reglas completas de v1 ni aplicar la igualdad de claves v1. |
 | Tag inválido | Cubrir tags externos de 31 y 33 octetos, uno de 32 octetos con un bit modificado y otro de 32 octetos completamente distinto; todos producen `INVALID_TAG`. |
 | Contexto secuencial inválido con tag válido | Con registro autenticado `ledger_id = L`, `sequence = 5`, tag externo coincidente de exactamente 32 octetos, `key_id` resoluble y contexto `(L, 6)`, exigir `INVALID_SEQUENCE_CONTEXT / UNEXPECTED_SEQUENCE`; como subcaso, registro con `L1` y contexto con `L2` exige `INVALID_SEQUENCE_CONTEXT / LEDGER_ID_MISMATCH`. |
 
@@ -943,27 +1038,35 @@ El vector `Versión desconocida` incluye, sin generar todavía sus bytes:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`;
 5. versión dentro del rango con representación no mínima:
    `MALFORMED_RECORD / NON_CANONICAL_ENCODING`;
-6. versión desconocida con cuerpo bien formado, válido y dentro del presupuesto,
+6. versión desconocida con cuerpo dentro del presupuesto que contiene un tag
+   bien formado: `UNSUPPORTED_VERSION`;
+7. versión desconocida con dos claves del cuerpo iguales byte a byte:
+   `UNSUPPORTED_VERSION`;
+8. versión desconocida con dos claves del cuerpo que decodifican al mismo valor
+   mediante representaciones diferentes: `UNSUPPORTED_VERSION`;
+9. versión desconocida con cuerpo bien formado, válido y dentro del presupuesto,
    aunque no sea canónico conforme a reglas completas de v1:
    `UNSUPPORTED_VERSION`;
-7. versión desconocida cuyo cuerpo excede el presupuesto de profundidad,
-   cardinalidad, string o tamaño:
-   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
+10. versión desconocida cuyo cuerpo excede el presupuesto de profundidad,
+    cardinalidad, string o tamaño:
+    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
 
-Los subcasos que esperan `UNSUPPORTED_VERSION` no contienen claves duplicadas,
-UTF-8 inválido ni otra invalidez CBOR genérica. Demuestran que el verificador no
-interpreta una versión desconocida mediante reglas completas de v1, pero tampoco
-permite que omita el presupuesto de recursos.
+Los subcasos que esperan `UNSUPPORTED_VERSION` no contienen UTF-8 inválido ni
+otra invalidez CBOR independiente de versión. Las claves repetidas de los
+subcasos 7 y 8 no se clasifican mediante la igualdad de v1. Estos casos
+demuestran que el verificador no interpreta una versión desconocida mediante
+reglas completas de v1, pero tampoco permite que omita el presupuesto de
+recursos. Ninguno genera todavía bytes.
 
 Todo vector que declare un tag válido usa exactamente los 32 octetos de la
 salida HMAC-SHA-256 completa, sin truncamiento, y solo permite continuar cuando
 coincide. El vector `Tag inválido` no genera todavía tags: fija únicamente sus
 longitudes y resultados candidatos.
 
-El vector `Clave duplicada` debe producir el mismo resultado con un parser que
-preserve todos los pares y con una biblioteca estricta que señale la duplicación
-como error de validez. Un decoder que pierda silenciosamente una ocurrencia no
-puede usarse como verificador independiente.
+El vector `Clave duplicada` se evalúa únicamente después del despacho de v1 con
+un parser que preserve todos los pares. Un decoder que pierda silenciosamente
+una ocurrencia o imponga una igualdad previa al despacho no puede usarse como
+verificador independiente.
 
 Como diagnóstico opcional de configuración de biblioteca puede usarse un map
 CBOR con las claves enteras `100` y `-1` para distinguir core deterministic de
@@ -1013,7 +1116,7 @@ Continúa sin autorización:
 - tratar una propuesta `DRAFT` como decisión aprobada;
 - permitir dos tipos o representaciones para el mismo valor lógico;
 - decodificar y recodificar silenciosamente una entrada no determinista;
-- perder claves duplicadas en un parser genérico;
+- colapsar pares o imponer igualdad de claves en el parser antes del despacho;
 - truncar int64 o tiempo mediante binary64;
 - transformar Unicode sin autorización;
 - confundir autenticación de `sequence` con continuidad o frescura terminal;
@@ -1066,6 +1169,14 @@ PENDING.
   implementaciones.
 - `TagCandidateV1` congela como candidato el HMAC-SHA-256 completo de 32 octetos,
   sin truncamiento; su codificación textual continúa fuera del alcance.
+- La salida no depende del registro de tags de la biblioteca: el conjunto
+  `recognized_semantic_tags` es vacío y el parser genérico solo reconoce la
+  estructura CBOR de los tags.
+- Las versiones desconocidas no heredan la igualdad de claves de v1; el parser
+  preserva todos los pares hasta después del despacho.
+- v1 define una igualdad cerrada y reproducible para claves textuales mediante
+  la secuencia exacta de valores escalares Unicode. Cada futura versión deberá
+  declarar expresamente su propio modelo de claves, igualdad y unicidad.
 - Estas reglas no añaden frescura, resistencia a rollback ni ancla externa.
 - No se modifica la semántica vigente de RQ-01, THR-P1 ni los ataques pendientes.
 
