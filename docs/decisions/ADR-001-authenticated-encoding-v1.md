@@ -211,6 +211,33 @@ Las responsabilidades candidatas de versionado se separan así:
   revisión del perfil, incluso si conserva la misma forma exterior;
 - no se infiere compatibilidad entre versiones.
 
+### Sobre candidato estable para descubrimiento de versión
+
+Dentro de la familia `PT2-CBOR-AUTH-RECORD-CANDIDATE`, las siguientes reglas son
+**CANDIDATO NO NORMATIVO** e invariantes para descubrir la versión antes de
+aplicar un perfil concreto:
+
+- los bytes contienen exactamente un elemento CBOR;
+- el elemento exterior es un array CBOR de longitud definida;
+- el array contiene como mínimo las posiciones 0, 1 y 2;
+- la posición 0 es `domain`, con tipo CBOR text string;
+- la posición 1 es `schema_version`, entero CBOR no negativo;
+- la posición 2 es `mechanism_version`, entero CBOR no negativo;
+- el array exterior, sus longitudes y los tres campos de descubrimiento usan
+  representación CBOR mínima;
+- los campos de versión no usan tags ni representaciones alternativas.
+
+Estas comprobaciones todavía no exigen que el array tenga longitud 10, no
+validan el literal exacto de `domain` y no aplican tipos, límites, orden de mapas
+ni otras reglas propias de v1 al resto del registro. El literal exacto de
+`domain`, la longitud exacta 10 y las demás reglas de
+`PT2-CBOR-AUTH-RECORD-CANDIDATE-v1` solo se verifican después de determinar que
+las versiones son soportadas.
+
+Una futura versión de esta familia debe conservar este sobre de descubrimiento.
+Una versión que necesite mover esos campos o usar otra estructura requerirá una
+familia o mecanismo de despacho diferente y una nueva decisión expresa.
+
 ### Separación de dominio candidata
 
 La posición 0 es un CBOR text string cuyo contenido ASCII exacto es:
@@ -378,9 +405,9 @@ valor no está soportado por el verificador. Se aplica tanto a una
 
 `UNSUPPORTED_VERSION` no está subordinado a `MALFORMED_RECORD` y no es un estado
 nuevo: ya forma parte de MEC-A1 en `docs/06-mechanism-specifications.md`. Cuando
-una versión es desconocida no se interpreta el resto con reglas de v1, salvo las
-comprobaciones genéricas necesarias para reconocer de forma segura el sobre y
-sus campos de versión.
+una versión es desconocida no se interpreta el resto con reglas de v1; solo se
+aplican las comprobaciones genéricas de CBOR y del sobre estable necesarias para
+reconocer de forma segura sus campos de versión.
 
 ### Frontera conceptual entre valores lógicos y bytes recibidos
 
@@ -415,29 +442,46 @@ autoriza implementación.
 
 1. Comprueba que exista exactamente un elemento CBOR bien formado. Si falla:
    `MALFORMED_RECORD / MALFORMED_CBOR`.
-2. Comprueba validez CBOR básica. Si falla:
+2. Comprueba validez CBOR básica del elemento completo. Si falla:
    `MALFORMED_RECORD / INVALID_CBOR`.
-3. Detecta claves duplicadas. Si falla:
-   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`.
-4. Comprueba codificación determinista. Si falla:
-   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
-5. Comprueba la estructura genérica necesaria para identificar las versiones.
-   Si falla: `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
-6. Comprueba si `schema_version` y `mechanism_version` están soportadas. Si no:
-   `UNSUPPORTED_VERSION`.
-7. Aplica el resto de restricciones del perfil v1. Si falla:
+3. Comprueba la estructura estable necesaria para descubrir las versiones:
+   array exterior de longitud definida, al menos tres posiciones y tipos
+   correctos para `domain`, `schema_version` y `mechanism_version`. Si falla:
    `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
-8. Resuelve la clave. Si falla: `UNKNOWN_KEY`.
-9. Verifica HMAC. Si falla: `INVALID_TAG`.
-10. Evalúa el contexto secuencial cuando exista. Si falla:
+4. Comprueba exclusivamente la codificación determinista del sobre de
+   descubrimiento y de los campos de versión. Si falla:
+   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+5. Comprueba si `schema_version` y `mechanism_version` están soportadas. Si
+   cualquiera no está soportada: `UNSUPPORTED_VERSION`. La evaluación se
+   detiene aquí y no se aplican reglas de v1 al resto.
+6. Para versiones soportadas por v1, detecta claves duplicadas. Si falla:
+   `MALFORMED_RECORD / DUPLICATE_MAP_KEY`.
+7. Comprueba la codificación determinista completa requerida por v1. Si falla:
+   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+8. Aplica la estructura exacta y las demás restricciones del perfil v1,
+   incluidos `domain` exacto, array de longitud 10, tipos, rangos, límites,
+   profundidad y tipos de `payload`. Si falla:
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`.
+9. Resuelve la clave. Si falla: `UNKNOWN_KEY`.
+10. Verifica HMAC. Si falla: `INVALID_TAG`.
+11. Evalúa el contexto secuencial cuando exista. Si falla:
     `INVALID_SEQUENCE_CONTEXT`.
-11. En otro caso: `VALID`.
+12. En otro caso: `VALID`.
 
 No se continúa a fases posteriores después de producir un resultado. Esta
 precedencia evita que dos implementaciones elijan detalles diferentes ante una
 entrada con varios defectos. `encode_record(logical_record)` aplica las
 validaciones lógicas equivalentes, pero no produce errores de parsing o
-canonicalidad de raw bytes. El orden es **CANDIDATO NO NORMATIVO**.
+canonicalidad de raw bytes. Las fases 1 y 2 son comprobaciones genéricas de
+CBOR; las fases 3 y 4 comprueban únicamente el sobre estable de descubrimiento;
+y las fases 6, 7 y 8 solo se ejecutan para versiones soportadas.
+
+Ninguna regla de canonicalidad específica de v1 se aplica al cuerpo de una
+versión desconocida. Una versión desconocida correctamente identificada produce
+`UNSUPPORTED_VERSION` aunque el resto sea no canónico según v1, siempre que el
+elemento completo siga siendo CBOR bien formado y básicamente válido. CBOR
+truncado o inválido continúa fallando en las fases 1 o 2. El orden completo es
+**CANDIDATO NO NORMATIVO**.
 
 ## Semántica secuencial candidata
 
@@ -493,9 +537,24 @@ previstos para B son:
 | Valores numéricos prohibidos | Rechazar float, cero negativo flotante, NaN, infinito, bignum y texto numérico donde corresponda mediante `ENCODING_PROFILE_VIOLATION`. |
 | Unicode inválido | Rechazar UTF-8 inválido y sustitutos aislados mediante `MALFORMED_RECORD` con detalle `INVALID_CBOR`. |
 | Unicode compuesto | Distinguir U+00E9 de U+0065 U+0301 sin normalizar. |
-| Versión desconocida | Esperar `UNSUPPORTED_VERSION` para `schema_version` o `mechanism_version` enteras, bien formadas, deterministas e identificables; no interpretar el resto con reglas de v1 salvo el reconocimiento genérico seguro del sobre y sus versiones. |
+| Versión desconocida | Cubrir los cuatro subcasos de despacho definidos después de la tabla y demostrar que una versión desconocida no se interpreta mediante reglas completas de v1. |
 | Ambigüedad número/texto | Demostrar que un campo entero no admite una representación textual alternativa. |
 | Contexto secuencial inválido con tag válido | Producir `INVALID_SEQUENCE_CONTEXT`, no `INVALID_TAG`, después de validar formato, versión y tag. |
+
+El vector `Versión desconocida` incluye, sin generar todavía sus bytes:
+
+1. sobre de descubrimiento determinista, versión desconocida y resto compatible
+   con v1: `UNSUPPORTED_VERSION`;
+2. sobre de descubrimiento determinista, versión desconocida y resto bien
+   formado y CBOR-válido, pero no canónico conforme a las reglas completas de
+   v1: también `UNSUPPORTED_VERSION`;
+3. campo de versión con tipo incorrecto:
+   `MALFORMED_RECORD / ENCODING_PROFILE_VIOLATION`;
+4. campo de versión codificado de forma no mínima:
+   `MALFORMED_RECORD / NON_CANONICAL_ENCODING`.
+
+Los dos primeros subcasos demuestran que el verificador no interpreta una
+versión desconocida mediante reglas del perfil v1.
 
 Como diagnóstico opcional de configuración de biblioteca puede usarse un map
 CBOR con las claves enteras `100` y `-1` para distinguir core deterministic de
