@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-01
 title: Change Control
-version: 0.1.1
+version: 0.2.0
 status: DRAFT
 approved_by: PENDING
 approval_date: PENDING
@@ -107,3 +107,67 @@ el investigador puede cambiar una decisión a estado `APPROVED`.
 
 Un ADR en estado `DRAFT` o `PROVISIONAL` no autoriza una implementación
 definitiva.
+
+## 9. Gobierno de tareas de agentes
+
+Las tareas ejecutadas por agentes deben cumplir
+`docs/17-agent-workflow.md`.
+
+Antes de modificar archivos, la tarea debe disponer de:
+
+1. objetivo y alcance autorizado;
+2. archivos permitidos y prohibidos;
+3. estado científico que debe conservarse;
+4. task brief marcado `DERIVED_NON_NORMATIVE`;
+5. manifest de fuentes con commit base y blob SHAs;
+6. presupuesto de contexto;
+7. dependencias y bloqueos;
+8. criterios de aceptación y comandos de validación.
+
+La lectura selectiva no reduce la autoridad de una fuente. Cuando un brief, una
+prueba, una implementación o un resumen contradigan una fuente de mayor
+autoridad, prevalece la fuente y la tarea debe detener la decisión afectada.
+
+## 10. Rondas de revisión
+
+Un pull request admite dos rondas normales de revisión automática:
+
+1. revisión integral del alcance autorizado;
+2. verificación de las correcciones y de la consistencia resultante.
+
+Los hallazgos de cada ronda deben agruparse antes de modificar archivos. Se debe
+evitar un commit separado por cada observación individual.
+
+La necesidad de una tercera ronda, la repetición de un hallazgo de severidad
+alta o la aparición de una nueva dependencia bloqueante activa escalamiento
+estructural.
+
+## 11. Escalamiento estructural
+
+El escalamiento estructural requiere:
+
+1. detener las correcciones incrementales;
+2. clasificar la causa raíz;
+3. comprobar si el documento o PR mezcla responsabilidades;
+4. reducir o dividir el alcance;
+5. regenerar el task brief y el manifest;
+6. solicitar autorización del investigador si cambia el alcance o una decisión;
+7. ejecutar una revisión dirigida después de la reestructuración.
+
+El escalamiento no aprueba decisiones, no elimina bloqueos y no autoriza cambios
+fuera del alcance original.
+
+## 12. Trabajo paralelo
+
+Dos tareas pueden ejecutarse en paralelo únicamente cuando:
+
+- no modifican el mismo contrato;
+- no consumen como estable una decisión `DRAFT` o `PROVISIONAL`;
+- sus dependencias duras están satisfechas;
+- sus archivos de salida no se solapan;
+- ninguna produce resultados experimentales oficiales antes de aprobar el
+  protocolo aplicable.
+
+La infraestructura neutral puede adelantarse cuando la tarea autorizada
+demuestre que no congela mecanismos, métricas, tratamientos, formatos o
+interpretaciones pendientes.

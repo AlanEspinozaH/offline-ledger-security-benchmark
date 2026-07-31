@@ -92,6 +92,54 @@ Cuando una tarea dependa de una decisión no especificada, el agente debe:
 4. evitar implementar una elección arbitraria;
 5. registrar la decisión cuando sea aprobada.
 
+## Gobierno de contexto y tareas de agentes
+
+Las tareas de agentes se rigen además por
+`docs/17-agent-workflow.md`.
+
+`AGENTS.md` debe leerse íntegramente una vez al inicio de cada tarea o sesión
+de trabajo. `docs/01-change-control.md` debe leerse íntegramente cuando la
+tarea sea normativa, de gobierno, de aprobación, de cambio de estado o cuando
+exista una ambigüedad sobre autoridad.
+
+Los demás documentos deben consultarse mediante lectura selectiva basada en un
+task brief derivado y un manifest de fuentes. El manifest debe registrar el
+commit base, el blob SHA de cada archivo, los encabezados o rangos consultados
+y el propósito de cada lectura.
+
+Un task brief es `DERIVED_NON_NORMATIVE`. No sustituye una fuente, no cambia su
+estado y no puede aprobar una decisión científica o metodológica.
+
+El presupuesto predeterminado se aplica al contexto documental específico
+de la tarea:
+
+- máximo de 600 líneas de fuentes específicas de la tarea;
+- objetivo aproximado máximo de 12000 tokens específicos de la tarea;
+- máximo de dos documentos específicos leídos íntegramente;
+- máximo de ocho rangos selectivos adicionales.
+
+El bootstrap obligatorio de gobierno —`AGENTS.md`,
+`docs/01-change-control.md` cuando corresponda y los rangos aplicables de
+`docs/17-agent-workflow.md`— se registra por separado y no se descuenta de ese
+límite. Debe reutilizarse dentro de la misma sesión y releerse cuando cambie su
+blob SHA o la tarea requiera una auditoría integral.
+
+El código o diff que constituye el objeto directo de la tarea, así como las
+salidas de compilación y pruebas, no se contabilizan como contexto documental.
+
+Toda excepción al presupuesto debe registrarse en el task brief, indicar la
+causa y enumerar las fuentes adicionales. No se debe ampliar el contexto por
+precaución genérica.
+
+Un pull request admite como máximo dos rondas normales de revisión automática.
+La necesidad de una tercera ronda activa escalamiento estructural conforme a
+`docs/17-agent-workflow.md`; no autoriza una tercera iteración incremental
+automática.
+
+Toda tarea paralela debe declarar sus dependencias, bloqueos y artefactos de
+entrada. Un artefacto bloqueado o no aprobado no puede utilizarse como contrato
+estable ni como evidencia experimental.
+
 ## Trazabilidad
 
 Cada cambio debe indicar los identificadores aplicables cuando existan:

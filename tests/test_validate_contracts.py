@@ -26,6 +26,10 @@ GENERAL_DOCUMENTS = {
         "Mechanism Specifications",
     ),
     "docs/11-measurement-contract.md": ("PT2-DOC-11", "Measurement Contract"),
+    "docs/17-agent-workflow.md": (
+        "PT2-DOC-17",
+        "Context-budgeted Agent Workflow",
+    ),
     "docs/decisions/README.md": (
         "PT2-DOC-DECISIONS",
         "Decision Record Governance",
@@ -194,6 +198,23 @@ class ValidateContractsTests(unittest.TestCase):
 
     def test_valid_repository(self) -> None:
         self.assertEqual([], self.errors())
+
+    def test_agent_workflow_document_is_required(self) -> None:
+        (self.root / "docs/17-agent-workflow.md").unlink()
+        self.assert_error(
+            "docs/17-agent-workflow.md: expected file does not exist"
+        )
+
+    def test_agent_workflow_requires_governed_metadata(self) -> None:
+        self.replace(
+            "docs/17-agent-workflow.md",
+            "title: Context-budgeted Agent Workflow\n",
+            "",
+        )
+        self.assert_error(
+            "docs/17-agent-workflow.md: required front matter key "
+            "'title' is missing or empty"
+        )
 
     def test_empty_file(self) -> None:
         self.write("docs/04-threat-model.md", "")
