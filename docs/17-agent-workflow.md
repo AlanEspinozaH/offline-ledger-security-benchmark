@@ -49,17 +49,27 @@ dividirse salvo que el investigador autorice expresamente el alcance conjunto.
 
 ## 4. Presupuesto de contexto
 
-El presupuesto documental predeterminado es:
+El presupuesto predeterminado del contexto específico de la tarea es:
 
 ```yaml
-max_repository_source_lines: 600
-target_document_tokens_approx: 12000
+max_task_specific_source_lines: 600
+target_task_specific_tokens_approx: 12000
 max_full_document_reads: 2
 max_selective_ranges: 8
+
 ```
 
-El presupuesto incluye reglas, especificaciones, ADR, planes y documentación
-utilizados para decidir el cambio.
+Este límite se aplica a las fuentes específicas necesarias para resolver la
+tarea. El bootstrap obligatorio de gobierno se registra por separado e incluye
+`AGENTS.md`, `docs/01-change-control.md` cuando corresponda y los rangos
+aplicables de este documento.
+
+El bootstrap debe reutilizarse dentro de una misma sesión. Solo se relee cuando
+cambie el blob SHA de una fuente de gobierno, se inicie una nueva sesión o la
+tarea requiera una auditoría integral.
+
+El presupuesto específico incluye reglas, especificaciones, ADR, planes y
+documentación utilizados para decidir el cambio.
 
 No incluye:
 
@@ -117,6 +127,15 @@ las fuentes.
 
 ## 6. Task brief
 
+En una tarea respaldada por un pull request, el task brief y su manifest deben
+conservarse en el cuerpo del PR o en una issue vinculada. En una tarea local sin
+PR deben conservarse en el registro o prompt de la tarea y resumirse en el
+informe final.
+
+Los briefs y manifests derivados no se incorporan al repositorio por defecto.
+Solo se versionan cuando una necesidad explícita de auditoría o reproducibilidad
+lo justifique.
+
 Todo task brief debe comenzar con:
 
 ```markdown
@@ -165,8 +184,8 @@ task_owner: <researcher-or-authorized-owner>
 
 ## Context budget
 
-max_repository_source_lines: 600
-target_document_tokens_approx: 12000
+max_task_specific_source_lines: 600
+target_task_specific_tokens_approx: 12000
 max_full_document_reads: 2
 max_selective_ranges: 8
 exception: NONE
@@ -239,7 +258,7 @@ excluded_sources:
     reason: <why it is not required>
 
 budget:
-  repository_source_lines: <integer>
+  task_specific_source_lines: <integer>
   approximate_document_tokens: <integer>
   exception: NONE
 ```
@@ -380,17 +399,21 @@ científica automática.
 
 | Línea de trabajo                    | Estado de inicio                | Permitido                                                      | No permitido                                          |
 | ----------------------------------- | ------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------- |
-| Gobierno del flujo                  | READY con autorización          | Documentos operativos y plantillas                             | Cambios científicos                                   |
+| Gobierno del flujo                  | ELIGIBLE FOR SEPARATE AUTHORIZATION          | Documentos operativos y plantillas                             | Cambios científicos                                   |
 | Refactor ADR/perfil/historial       | REQUIRES SEPARATE AUTHORIZATION | Reorganización semánticamente neutra                           | Aprobar o reescribir la decisión                      |
-| Esqueleto del harness               | READY WITH CONSTRAINTS          | Build, CI, interfaces neutrales, evidencia cruda               | Semántica definitiva de mecanismos                    |
-| Framework del generador de datasets | READY WITH CONSTRAINTS          | Semillas, reproducibilidad, manifests, carga fuera de medición | Congelar schema o contenido científico pendiente      |
-| Baseline SQLite funcional           | READY WITH CONSTRAINTS          | Apertura, inserción, lectura y smoke tests no oficiales        | Resultados comparativos oficiales o nuevas métricas   |
+| Esqueleto del harness               | ELIGIBLE AFTER DEPENDENCY CHECK          | Build, CI, interfaces neutrales, evidencia cruda               | Semántica definitiva de mecanismos                    |
+| Framework del generador de datasets | ELIGIBLE AFTER DEPENDENCY CHECK          | Semillas, reproducibilidad, manifests, carga fuera de medición | Congelar schema o contenido científico pendiente      |
+| Baseline SQLite funcional           | ELIGIBLE AFTER DEPENDENCY CHECK          | Apertura, inserción, lectura y smoke tests no oficiales        | Resultados comparativos oficiales o nuevas métricas   |
 | Codificadores y vectores candidatos | BLOCKED                         | Ninguno antes de aceptación experimental expresa               | Inferir aceptación desde el merge del PR #8           |
 | MEC-A1 definitivo                   | BLOCKED                         | Ninguno                                                        | Implementación productiva o desbloqueo                |
 | Métricas oficiales de append        | BLOCKED                         | Ninguna medición oficial                                       | Elegir silenciosamente la región medida               |
 | Interpretación científica           | BLOCKED                         | Ninguna conclusión experimental                                | Usar scaffolding o pruebas funcionales como evidencia |
 
-`READY WITH CONSTRAINTS` requiere una tarea explícitamente autorizada.
+`ELIGIBLE AFTER DEPENDENCY CHECK` requiere una tarea explícitamente autorizada
+y una comprobación documentada de dependencias.
+
+Las etiquetas de esta matriz son clasificaciones operativas. No constituyen
+aprobación, desbloqueo ni autorización de implementación.
 
 Una tarea paralela no puede consumir como contrato estable un resultado
 `BLOCKED`, `DRAFT` o no validado.

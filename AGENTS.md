@@ -110,12 +110,19 @@ y el propósito de cada lectura.
 Un task brief es `DERIVED_NON_NORMATIVE`. No sustituye una fuente, no cambia su
 estado y no puede aprobar una decisión científica o metodológica.
 
-El presupuesto documental predeterminado por tarea es:
+El presupuesto predeterminado se aplica al contexto documental específico
+de la tarea:
 
-- máximo de 600 líneas de fuentes del repositorio;
-- objetivo aproximado máximo de 12000 tokens documentales;
-- máximo de dos documentos leídos íntegramente;
+- máximo de 600 líneas de fuentes específicas de la tarea;
+- objetivo aproximado máximo de 12000 tokens específicos de la tarea;
+- máximo de dos documentos específicos leídos íntegramente;
 - máximo de ocho rangos selectivos adicionales.
+
+El bootstrap obligatorio de gobierno —`AGENTS.md`,
+`docs/01-change-control.md` cuando corresponda y los rangos aplicables de
+`docs/17-agent-workflow.md`— se registra por separado y no se descuenta de ese
+límite. Debe reutilizarse dentro de la misma sesión y releerse cuando cambie su
+blob SHA o la tarea requiera una auditoría integral.
 
 El código o diff que constituye el objeto directo de la tarea, así como las
 salidas de compilación y pruebas, no se contabilizan como contexto documental.
