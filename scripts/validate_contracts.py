@@ -21,6 +21,7 @@ EXPECTED_FILES = (
     "docs/06-mechanism-specifications.md",
     "docs/11-measurement-contract.md",
     "docs/16-traceability-matrix.csv",
+    "docs/17-agent-workflow.md",
     "docs/decisions/README.md",
     "docs/decisions/ADR-000-template.md",
     "docs/decisions/ADR-001-authenticated-encoding-v1.md",
