@@ -19,19 +19,110 @@ readonly go_dir="${repository_root}/implementations/go-fxamacker"
 readonly python_codec="${repository_root}/implementations/python-manual/candidate_codec.py"
 readonly fixture_dir="${repository_root}/testdata/adr001-candidate/seed-positive"
 
-temporary_dir="$(mktemp -d)"
-readonly temporary_dir
+temporary_parent_input="${TMPDIR-/tmp}"
+while [[ "${temporary_parent_input}" != "/" && "${temporary_parent_input}" == */ ]]; do
+	temporary_parent_input="${temporary_parent_input%/}"
+done
+readonly temporary_parent_input
 
-if [[ -z "${temporary_dir}" || ! -e "${temporary_dir}" || ! -d "${temporary_dir}" ]]; then
-	printf 'mktemp did not create a usable directory\n' >&2
+if [[ -z "${temporary_parent_input}" ||
+	! -d "${temporary_parent_input}" ||
+	-L "${temporary_parent_input}" ||
+	! -w "${temporary_parent_input}" ]]; then
+	printf 'temporary parent is not a writable, non-symlink directory: %s\n' \
+		"${temporary_parent_input}" >&2
 	exit 1
 fi
 
+temporary_parent="$(
+	cd -- "${temporary_parent_input}" || exit 1
+	pwd -P
+)"
+readonly temporary_parent
+
+if [[ -z "${temporary_parent}" || "${temporary_parent}" != /* ||
+	! -d "${temporary_parent}" || -L "${temporary_parent}" ||
+	! -w "${temporary_parent}" ]]; then
+	printf 'failed to resolve a usable physical temporary parent: %s\n' \
+		"${temporary_parent}" >&2
+	exit 1
+fi
+
+readonly temporary_template="${temporary_parent}/candidate-codec-interop.XXXXXXXXXX"
+
+umask 077
+temporary_dir="$(mktemp -d "${temporary_template}")"
+readonly temporary_dir
+
+if [[ -z "${temporary_dir}" || "${temporary_dir}" != /* ]]; then
+	printf 'mktemp did not return a non-empty absolute path\n' >&2
+	exit 1
+fi
+
+temporary_name="${temporary_dir##*/}"
+temporary_returned_parent="${temporary_dir%/*}"
+if [[ -z "${temporary_returned_parent}" ]]; then
+	temporary_returned_parent="/"
+fi
+readonly temporary_name
+readonly temporary_returned_parent
+
+if [[ "${temporary_returned_parent}" != "${temporary_parent}" ||
+	! "${temporary_name}" =~ ^candidate-codec-interop\.[[:alnum:]]{10}$ ||
+	! -d "${temporary_dir}" || -L "${temporary_dir}" ]]; then
+	printf 'mktemp returned an untrusted directory path: %s\n' \
+		"${temporary_dir}" >&2
+	exit 1
+fi
+
+temporary_dir_canonical="$(
+	cd -- "${temporary_dir}" || exit 1
+	pwd -P
+)"
+readonly temporary_dir_canonical
+
+if [[ "${temporary_dir_canonical}" != "${temporary_dir}" ]]; then
+	printf 'mktemp returned a non-canonical directory path: %s\n' \
+		"${temporary_dir}" >&2
+	exit 1
+fi
+
+temporary_uid="$(stat -c '%u' -- "${temporary_dir}")"
+readonly temporary_uid
+
+temporary_mode="$(stat -c '%a' -- "${temporary_dir}")"
+readonly temporary_mode
+
+if [[ "${temporary_uid}" != "${EUID}" ]]; then
+	printf 'mktemp directory owner %s does not match effective UID %s\n' \
+		"${temporary_uid}" \
+		"${EUID}" >&2
+	exit 1
+fi
+
+if [[ ! "${temporary_mode}" =~ ^[0-7]{3,4}$ ]] ||
+	((8#${temporary_mode} & 077)); then
+	printf 'mktemp directory permissions are not private: %s\n' \
+		"${temporary_mode}" >&2
+	exit 1
+fi
+
+shopt -s dotglob nullglob
+temporary_initial_entries=("${temporary_dir}"/*)
+shopt -u dotglob nullglob
+
+if ((${#temporary_initial_entries[@]} != 0)); then
+	printf 'mktemp directory was not initially empty: %s\n' \
+		"${temporary_dir}" >&2
+	exit 1
+fi
+
+readonly go_binary="${temporary_dir}/candidate-codec-go"
 readonly temporary_sentinel="${temporary_dir}/.candidate-codec-interop-owner"
 readonly temporary_owner="candidate-codec-interop:${BASHPID}:${temporary_dir}"
+go_build_started=0
 
 if ! (
-	umask 077
 	set -o noclobber
 	printf '%s\n' "${temporary_owner}" >"${temporary_sentinel}"
 ); then
@@ -48,18 +139,35 @@ cleanup() {
 
 	trap - EXIT
 
-	if [[ -e "${temporary_dir}" ]]; then
-		if [[ ! -d "${temporary_dir}" || ! -f "${temporary_sentinel}" ]]; then
-			printf 'refusing to remove unverified temporary path %s\n' \
+	if [[ -e "${temporary_dir}" || -L "${temporary_dir}" ]]; then
+		if [[ ! -d "${temporary_dir}" || -L "${temporary_dir}" ||
+			! -f "${temporary_sentinel}" || -L "${temporary_sentinel}" ]]; then
+			printf 'refusing to clean unverified temporary path %s\n' \
 				"${temporary_dir}" >&2
 			cleanup_status=1
 		elif ! IFS= read -r recorded_owner <"${temporary_sentinel}" ||
 			[[ "${recorded_owner}" != "${temporary_owner}" ]]; then
-			printf 'refusing to remove temporary directory with invalid ownership sentinel %s\n' \
+			printf 'refusing to clean temporary directory with invalid ownership sentinel %s\n' \
 				"${temporary_dir}" >&2
 			cleanup_status=1
-		elif ! rm -rf -- "${temporary_dir}"; then
-			printf 'failed to remove temporary directory %s\n' \
+		elif ((go_build_started != 0)) &&
+			[[ -e "${go_binary}" || -L "${go_binary}" ]] &&
+			! rm -f -- "${go_binary}"; then
+			printf 'failed to remove known Go binary %s\n' \
+				"${go_binary}" >&2
+			cleanup_status=1
+		fi
+
+		if ((cleanup_status == 0)) &&
+			! rm -f -- "${temporary_sentinel}"; then
+			printf 'failed to remove temporary ownership sentinel %s\n' \
+				"${temporary_sentinel}" >&2
+			cleanup_status=1
+		fi
+
+		if ((cleanup_status == 0)) &&
+			! rmdir -- "${temporary_dir}"; then
+			printf 'temporary directory contains an unknown entry or could not be removed: %s\n' \
 				"${temporary_dir}" >&2
 			cleanup_status=1
 		fi
@@ -90,13 +198,6 @@ else
 fi
 readonly working_tree_state
 
-readonly go_binary="${temporary_dir}/candidate-codec-go"
-
-(
-	cd -- "${go_dir}" || exit 1
-	go build -o "${go_binary}" ./cmd/candidate-codec
-)
-
 environment_description="$(uname -srmo)"
 readonly environment_description
 
@@ -113,6 +214,20 @@ dependency="$(
 		github.com/fxamacker/cbor/v2
 )"
 readonly dependency
+
+fixtures=("${fixture_dir}"/*.json)
+
+if [[ ! -e "${fixtures[0]}" ]]; then
+	printf 'no seed fixtures found in %s\n' \
+		"${fixture_dir}" >&2
+	exit 1
+fi
+
+go_build_started=1
+(
+	cd -- "${go_dir}" || exit 1
+	go build -o "${go_binary}" ./cmd/candidate-codec
+)
 
 printf '%s | environment | %s\n' \
 	"${artifact_status}" \
@@ -137,14 +252,6 @@ printf '%s | working_tree | %s\n' \
 printf '%s | dependency | %s\n' \
 	"${artifact_status}" \
 	"${dependency}"
-
-fixtures=("${fixture_dir}"/*.json)
-
-if [[ ! -e "${fixtures[0]}" ]]; then
-	printf 'no seed fixtures found in %s\n' \
-		"${fixture_dir}" >&2
-	exit 1
-fi
 
 validate_hex() {
 	local producer="$1"
