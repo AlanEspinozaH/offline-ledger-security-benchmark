@@ -45,6 +45,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover \
   -s implementations/python-manual \
   -p 'test_*.py' \
   -v
+implementations/tests/check_candidate_codec_interop_test.sh
 scripts/check_candidate_codec_interop.sh
 ```
 

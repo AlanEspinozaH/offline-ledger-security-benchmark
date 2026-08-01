@@ -2,6 +2,7 @@ package candidatecodec
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -130,4 +131,181 @@ func TestEncodeRejectsRecordAboveRawByteLimit(t *testing.T) {
 	if _, err := Encode(record); err == nil || !strings.Contains(err.Error(), "maximum") {
 		t.Fatalf("Encode(oversized record) error = %v, want size rejection", err)
 	}
+}
+
+func TestPayloadBoundaryPairs(t *testing.T) {
+	tests := []struct {
+		name      string
+		payload   map[string]any
+		wantError bool
+	}{
+		{"structural depth 9", map[string]any{"value": nestedArrays(7)}, false},
+		{"structural depth 10", map[string]any{"value": nestedArrays(8)}, true},
+		{"array 256 elements", map[string]any{"value": integerArray(256)}, false},
+		{"array 257 elements", map[string]any{"value": integerArray(257)}, true},
+		{"map 256 pairs", integerMap(256), false},
+		{"map 257 pairs", integerMap(257), true},
+		{"text 16384 UTF-8 bytes", map[string]any{"value": strings.Repeat("x", maxTextBytes)}, false},
+		{"text 16385 UTF-8 bytes", map[string]any{"value": strings.Repeat("x", maxTextBytes+1)}, true},
+		{"key 128 UTF-8 bytes", map[string]any{strings.Repeat("k", 128): int64(0)}, false},
+		{"key 129 UTF-8 bytes", map[string]any{strings.Repeat("k", 129): int64(0)}, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			record := validRecord()
+			record.Payload = test.payload
+			requireEncodingOutcome(t, record, test.wantError)
+		})
+	}
+}
+
+func TestOuterFieldBoundaryPairs(t *testing.T) {
+	tests := []struct {
+		name      string
+		mutate    func(*Record)
+		wantError bool
+	}{
+		{"sequence 1", func(record *Record) { record.Sequence = 1 }, false},
+		{"sequence 2^63-1", func(record *Record) { record.Sequence = maxInt63 }, false},
+		{"sequence 0", func(record *Record) { record.Sequence = 0 }, true},
+		{"sequence 2^63", func(record *Record) { record.Sequence = uint64(1) << 63 }, true},
+		{"occurred_at 0", func(record *Record) { record.OccurredAt = 0 }, false},
+		{"occurred_at maximum", func(record *Record) { record.OccurredAt = maxOccurredAt }, false},
+		{"occurred_at maximum plus one", func(record *Record) { record.OccurredAt = maxOccurredAt + 1 }, true},
+		{"event_type 1 byte", func(record *Record) { record.EventType = "x" }, false},
+		{"event_type 64 bytes", func(record *Record) { record.EventType = strings.Repeat("x", 64) }, false},
+		{"event_type empty", func(record *Record) { record.EventType = "" }, true},
+		{"event_type 65 bytes", func(record *Record) { record.EventType = strings.Repeat("x", 65) }, true},
+		{"operator_id 1 byte", func(record *Record) { record.OperatorID = "x" }, false},
+		{"operator_id 128 bytes", func(record *Record) { record.OperatorID = strings.Repeat("x", 128) }, false},
+		{"operator_id empty", func(record *Record) { record.OperatorID = "" }, true},
+		{"operator_id 129 bytes", func(record *Record) { record.OperatorID = strings.Repeat("x", 129) }, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			record := validRecord()
+			test.mutate(&record)
+			requireEncodingOutcome(t, record, test.wantError)
+		})
+	}
+}
+
+func TestTotalEncodedSizeBoundaryPair(t *testing.T) {
+	exact := recordWithEncodedSize(t, maxRecordBytes)
+	encoded, err := Encode(exact)
+	if err != nil {
+		t.Fatalf("Encode(exact size) error = %v", err)
+	}
+	if len(encoded) != maxRecordBytes {
+		t.Fatalf("Encode(exact size) length = %d, want %d", len(encoded), maxRecordBytes)
+	}
+
+	oversized := exact
+	oversized.Payload = make(map[string]any, len(exact.Payload))
+	for key, value := range exact.Payload {
+		oversized.Payload[key] = value
+	}
+	oversized.Payload["d"] = oversized.Payload["d"].(string) + "x"
+
+	size, err := encodedSize(logicalOuterForTest(oversized))
+	if err != nil {
+		t.Fatalf("encodedSize(oversized) error = %v", err)
+	}
+	if size != maxRecordBytes+1 {
+		t.Fatalf("oversized logical record size = %d, want %d", size, maxRecordBytes+1)
+	}
+	if _, err := Encode(oversized); err == nil {
+		t.Fatal("Encode(65537-byte record) error = nil, want rejection")
+	}
+}
+
+func requireEncodingOutcome(t *testing.T, record Record, wantError bool) {
+	t.Helper()
+
+	_, err := Encode(record)
+	if wantError && err == nil {
+		t.Fatal("Encode() error = nil, want rejection")
+	}
+	if !wantError && err != nil {
+		t.Fatalf("Encode() error = %v, want acceptance", err)
+	}
+}
+
+func nestedArrays(count int) any {
+	var value any = int64(0)
+	for range count {
+		value = []any{value}
+	}
+	return value
+}
+
+func integerArray(count int) []any {
+	result := make([]any, count)
+	for index := range result {
+		result[index] = int64(0)
+	}
+	return result
+}
+
+func integerMap(count int) map[string]any {
+	result := make(map[string]any, count)
+	for index := range count {
+		result["k"+strconv.Itoa(index)] = int64(0)
+	}
+	return result
+}
+
+func logicalOuterForTest(record Record) []any {
+	return []any{
+		Domain,
+		record.SchemaVersion,
+		record.MechanismVersion,
+		record.LedgerID,
+		record.Sequence,
+		record.EventType,
+		record.OccurredAt,
+		record.OperatorID,
+		record.AmountCents,
+		record.Payload,
+	}
+}
+
+func recordWithEncodedSize(t *testing.T, target int) Record {
+	t.Helper()
+
+	record := validRecord()
+	fullText := strings.Repeat("x", maxTextBytes)
+	record.Payload = map[string]any{
+		"a": fullText,
+		"b": fullText,
+		"c": fullText,
+		"d": "",
+	}
+
+	baseSize, err := encodedSize(logicalOuterForTest(record))
+	if err != nil {
+		t.Fatalf("encodedSize(base record) error = %v", err)
+	}
+	requiredDelta := target - baseSize
+
+	for textLength := 0; textLength <= maxTextBytes; textLength++ {
+		encodedTextDelta := headSize(uint64(textLength)) + textLength - headSize(0)
+		if encodedTextDelta != requiredDelta {
+			continue
+		}
+		record.Payload["d"] = strings.Repeat("x", textLength)
+		size, err := encodedSize(logicalOuterForTest(record))
+		if err != nil {
+			t.Fatalf("encodedSize(target record) error = %v", err)
+		}
+		if size != target {
+			t.Fatalf("constructed record size = %d, want %d", size, target)
+		}
+		return record
+	}
+
+	t.Fatalf("unable to construct candidate record of %d bytes", target)
+	return Record{}
 }
