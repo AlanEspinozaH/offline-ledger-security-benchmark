@@ -66,11 +66,18 @@ La candidata asigna una clave HMAC independiente a cada `ledger_id`. Una clave
 no puede proteger dos `ledger_id` distintos y cada relación ledger-clave se
 registra mediante un `key_id`.
 
-La duración lógica de un ledger entre datasets o ejecuciones sigue dependiendo
-del futuro plan experimental. Esta política no autoriza reutilizar
-silenciosamente una relación ledger-clave entre ejecuciones: cualquier
-persistencia o reutilización deberá declararse y autorizarse en ese plan. No se
-selecciona una clave global, una clave por dataset ni una clave productiva.
+Una clave aleatoria nueva se genera cuando se crea una nueva relación
+ledger-clave autorizada. En esta política, «nueva» califica la creación de esa
+relación y no implica necesariamente renovar la clave en cada ejecución.
+
+Si el mismo `ledger_id` aparece en distintos datasets o ejecuciones, el
+futuro plan experimental debe declarar si persiste la misma relación autorizada
+o si se crea una relación nueva con clave nueva y `key_id` nuevo.
+ADR-002 v0.2.0 no selecciona entre esas políticas y no permite resolver esa
+decisión mediante
+reutilización silenciosa. En ningún caso una clave protege dos `ledger_id`
+distintos. No se selecciona una clave global, una clave por dataset ni una clave
+productiva.
 
 La clave por ledger es la alternativa finalista de esta propuesta, no una
 alternativa aprobada.
@@ -107,15 +114,18 @@ La asociación candidata es:
 (ledger_id, key_id) -> key_bytes
 ```
 
-El resolver debe comprobar ambos identificadores. La ausencia de la asociación
-produce `UNKNOWN_KEY`. Si el `key_id` está asociado a otro ledger, la
-resolución produce `UNKNOWN_KEY` o un fallo equivalente de resolución y no
-intenta HMAC con la clave de ese otro ledger.
+El resolver debe comprobar conjuntamente ambos identificadores. Si no existe
+exactamente la pareja `(ledger_id, key_id)`, el resultado de `MEC-A1` es
+`UNKNOWN_KEY`. Esta regla incluye el caso en que el `key_id`
+exista para otro `ledger_id`; el resolver no intenta HMAC con la clave
+asociada al otro ledger y no produce un estado alternativo de resolución.
 
-Una clave configurada con longitud distinta de 32 octetos causa un fallo de
-preparación o configuración antes de iniciar la verificación; no produce
-`INVALID_TAG`. `INVALID_TAG` solo puede producirse después de resolver una
-clave válida de 32 octetos y comparar el HMAC completo.
+Los fallos de configuración quedan reservados para material aprovisionado
+inválido detectado antes de iniciar la unidad experimental o la verificación.
+Una clave configurada con longitud distinta de 32 octetos produce ese fallo de
+configuración, no `UNKNOWN_KEY` ni `INVALID_TAG`. `INVALID_TAG` solo puede
+ocurrir después de resolver correctamente una clave válida de 32 octetos y
+comparar el HMAC completo.
 
 Esta asociación no constituye una API, una clase ni un schema ejecutable.
 
@@ -176,9 +186,16 @@ vectores.
 
 #### Corridas experimentales
 
-Las corridas experimentales usarán claves aleatorias nuevas por ledger. La
-reproducibilidad corresponde al procedimiento, versiones, tamaño, proveedor y
-metadatos no secretos, no a publicar el secreto.
+Al crear una nueva relación ledger-clave para una unidad experimental
+autorizada, la clave se genera aleatoriamente y es nueva para esa relación. Si
+un mismo `ledger_id` reaparece entre datasets o ejecuciones, el futuro plan
+experimental debe declarar si conserva la relación autorizada o crea una nueva
+relación con nueva clave y nuevo `key_id`. Esta política candidata no
+selecciona entre esas opciones y prohíbe resolverlas mediante reutilización
+silenciosa.
+
+La reproducibilidad corresponde al procedimiento, versiones, tamaño, proveedor
+y metadatos no secretos, no a publicar el secreto.
 
 Las claves públicas de vectores no pueden reutilizarse en experimentos. Esta
 candidata tampoco selecciona una derivación desde un secreto maestro.
@@ -262,8 +279,9 @@ indebida entre tratamientos.
 
 **Clasificación respecto de la política propuesta:** candidata finalista.
 
-Cada `ledger_id` recibe una clave; la misma clave puede reutilizarse al repetir
-operaciones sobre ese ledger conforme al protocolo.
+Cada `ledger_id` recibe una relación ledger-clave. La relación puede persistir
+durante la vida autorizada del ledger que defina el futuro plan experimental,
+pero nunca se reutiliza automáticamente entre datasets o ejecuciones.
 
 #### Ventajas
 
@@ -371,16 +389,20 @@ no elimina bloqueos y no convierte la política en especificación normativa.
 
 PENDING
 
-## Consecuencias de mantener el candidato pendiente
+## Consecuencias de la decisión seleccionada
+
+PENDING
+
+## Estado y dependencias mientras la decisión permanece pendiente
 
 - ADR-002 continúa `DRAFT`;
 - `MEC-A1` permanece `BLOCKED`;
 - `MET-APPEND-READY-E2E` permanece `BLOCKED`;
-- no hay implementación autorizada;
+- no existe implementación autorizada;
 - los vectores de codificación sin HMAC pueden seguir tratándose en tareas
   independientes;
-- los vectores que requieren tag válido, `key_id` o contexto autenticado
-  permanecen bloqueados hasta una aceptación experimental separada;
+- los vectores con HMAC, `key_id` o contexto autenticado permanecen bloqueados
+  hasta una aceptación experimental separada;
 - una futura aceptación experimental no equivale a aprobación normativa.
 
 ## Documentos afectados
