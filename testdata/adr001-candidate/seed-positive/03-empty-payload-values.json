@@ -1,0 +1,21 @@
+{
+  "artifact_status": "CANDIDATO NO NORMATIVO",
+  "profile": "PT2-CBOR-AUTH-RECORD-CANDIDATE-v1",
+  "case_id": "seed-positive-03-empty-payload-values",
+  "record": {
+    "domain": "PT2:MEC-A1:HMAC-SHA-256:RECORD:v1",
+    "schema_version": 1,
+    "mechanism_version": 1,
+    "ledger_id_hex": "102030405060708090a0b0c0d0e0f000",
+    "sequence": 3,
+    "event_type": "x",
+    "occurred_at": 1,
+    "operator_id": "x",
+    "amount_cents": -1,
+    "payload": {
+      "empty_text": "",
+      "empty_array": [],
+      "empty_map": {}
+    }
+  }
+}
