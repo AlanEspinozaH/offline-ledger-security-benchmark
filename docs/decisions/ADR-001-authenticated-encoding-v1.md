@@ -1,10 +1,10 @@
 ---
 decision_id: ADR-001
 title: Authenticated encoding v1
-version: 0.3.0
+version: 0.4.0
 status: DRAFT
-date: PENDING
-decided_by: PENDING
+date: 2026-07-31
+decided_by: Alan Espinoza
 ---
 
 # ADR-001 — Codificación autenticada v1
@@ -12,8 +12,12 @@ decided_by: PENDING
 ## Estado y alcance del expediente
 
 Este expediente congela una propuesta técnica concreta para los bytes que
-podría autenticar MEC-A1. ADR-001 permanece `DRAFT` y la decisión del
-investigador permanece `PENDING`.
+podría autenticar MEC-A1. ADR-001 permanece `DRAFT`.
+
+El investigador ha aceptado `PT2-CBOR-AUTH-RECORD-CANDIDATE-v1`
+exclusivamente como base para experimentación controlada y no normativa. Esta
+aceptación no constituye aprobación normativa, no define bytes normativos y no
+desbloquea MEC-A1.
 
 La selección del finalista y todas las reglas del perfil se marcan
 **CANDIDATO NO NORMATIVO**. No constituyen aprobación, no definen bytes
@@ -54,8 +58,10 @@ determine:
 - relación entre autenticación de `sequence` y validación contextual;
 - validación independiente mediante vectores byte a byte.
 
-Esta versión congela una propuesta verificable para revisión y posible
-experimentación. No resuelve la decisión científica, que continúa `PENDING`.
+Esta versión congela una propuesta verificable para experimentación
+controlada. El investigador ha aceptado el perfil candidato únicamente para
+ese propósito. La aprobación normativa final continúa pendiente y dependerá
+de la evidencia experimental y de una decisión posterior expresa.
 
 ## Distinción obligatoria sobre secuencia
 
@@ -1086,7 +1092,8 @@ resultados, límites y condiciones de rechazo.
 
 ## Secuencia de trabajo posterior
 
-1. El investigador acepta el perfil candidato como base para experimentación,
+1. **COMPLETADO el 2026-07-31:** el investigador acepta el perfil candidato
+   exclusivamente como base para experimentación controlada y no normativa,
    sin cambiar ADR-001 a `APPROVED`.
 2. Una tarea posterior implementa dos codificadores de referencia
    independientes.
@@ -1098,9 +1105,14 @@ resultados, límites y condiciones de rechazo.
 8. Solo después se congelan vectores normativos y se modifican los documentos
    afectados mediante tareas autorizadas.
 
-Esta tarea documental no autoriza todavía esos codificadores ni produce bytes o
-vectores. La futura autorización queda condicionada a que el investigador
-acepte primero la propuesta para experimentación.
+Esta decisión satisface la dependencia científica previa para que una tarea
+posterior pueda solicitar autorización para implementar los codificadores de
+referencia y producir los vectores candidatos.
+
+Esta tarea documental no implementa codificadores, no produce bytes o vectores
+y no autoriza por sí sola archivos o cambios fuera de ADR-001. La
+experimentación deberá realizarse mediante una tarea separada, con alcance,
+dependencias, artefactos y validaciones explícitos.
 
 Continúa sin autorización:
 
@@ -1138,13 +1150,29 @@ normativos.
 
 ## Decisión del investigador
 
-PENDING
+`PT2-CBOR-AUTH-RECORD-CANDIDATE-v1` se acepta exclusivamente como base para
+experimentación controlada y no normativa.
+
+La aceptación permite preparar, mediante tareas posteriores separadamente
+autorizadas:
+
+- dos codificadores de referencia independientes;
+- los veinte vectores candidatos descritos en este expediente;
+- comparación byte a byte entre implementaciones;
+- evaluación de rechazos, límites y ambigüedades del perfil.
+
+La aceptación no cambia ADR-001 a `APPROVED`, no convierte el candidato en
+contrato estable y puede revisarse según la evidencia experimental obtenida.
 
 ## Consecuencias de la decisión seleccionada
 
-PENDING.
+La dependencia científica previa para proponer experimentación con el único
+perfil finalista queda satisfecha. Cada actividad experimental requiere todavía
+una tarea independiente y expresamente autorizada.
 
 - ADR-001 continúa `DRAFT`.
+- `PT2-CBOR-AUTH-RECORD-CANDIDATE-v1` queda aceptado únicamente para
+  experimentación controlada y no normativa.
 - MEC-A1 continúa `BLOCKED`.
 - ADR-002 continúa pendiente.
 - ADR-001 puede congelar una representación autenticada sin congelar todavía
@@ -1157,11 +1185,11 @@ PENDING.
 - No existen bytes autenticados normativos.
 - No existe schema normativo.
 - No se autoriza integración productiva.
-- Esta tarea no autoriza todavía codificadores de referencia ni genera
+- Esta decisión no implementa codificadores de referencia ni genera
   vectores.
-- Una tarea futura podrá crear codificadores de referencia y vectores marcados
-  `CANDIDATO NO NORMATIVO` solo si el investigador acepta primero esta propuesta
-  para experimentación.
+- Una tarea futura, separadamente autorizada, podrá crear codificadores de
+  referencia y vectores marcados `CANDIDATO NO NORMATIVO`; la dependencia de
+  aceptación experimental previa queda satisfecha.
 - Estas fronteras no modifican ADR-004 ni añaden garantía de frescura.
 - El despacho de versiones queda acotado antes de interpretar el cuerpo; una
   versión desconocida no permite omitir límites de recursos.
