@@ -1,7 +1,7 @@
 ---
 decision_id: ADR-002
 title: Key scope and provisioning
-version: 0.1.0
+version: 0.2.0
 status: DRAFT
 date: PENDING
 decided_by: PENDING
@@ -49,9 +49,193 @@ claves, semillas secretas o passphrases en el repositorio o en la evidencia.
 - baja complejidad y ausencia de infraestructura productiva fuera de alcance;
 - capacidad de documentar fallos de provisión sin revelar material sensible.
 
+## Política candidata para experimentación
+
+**CANDIDATO NO NORMATIVO**
+
+Identificador de política: `ADR002-KEY-POLICY-CANDIDATE-v1`.
+
+Esta sección propone una política técnica concreta exclusivamente para
+experimentación controlada con `MEC-A1`. La propuesta permanece pendiente de
+aceptación experimental separada y no constituye una decisión del investigador,
+una especificación normativa ni una autorización de implementación.
+
+### 1. Alcance de la clave
+
+La candidata asigna una clave HMAC independiente a cada `ledger_id`. Una clave
+no puede proteger dos `ledger_id` distintos y cada relación ledger-clave se
+registra mediante un `key_id`.
+
+La duración lógica de un ledger entre datasets o ejecuciones sigue dependiendo
+del futuro plan experimental. Esta política no autoriza reutilizar
+silenciosamente una relación ledger-clave entre ejecuciones: cualquier
+persistencia o reutilización deberá declararse y autorizarse en ese plan. No se
+selecciona una clave global, una clave por dataset ni una clave productiva.
+
+La clave por ledger es la alternativa finalista de esta propuesta, no una
+alternativa aprobada.
+
+### 2. Material de clave
+
+Cada clave candidata es una secuencia opaca de exactamente 32 octetos
+(256 bits) para HMAC-SHA-256. Debe generarse mediante una fuente
+criptográficamente segura, fuera de las regiones `append-hot` y `verify-hot`.
+
+Una clave con longitud distinta de 32 octetos se rechaza. No se permite
+normalización, truncamiento, padding ni conversión textual del material. Esta
+regla conceptual todavía no define una API ni un formato de almacenamiento.
+
+### 3. `key_id`
+
+Cada `key_id` candidato es un identificador opaco de exactamente 16 octetos.
+No es secreto, es externo a `authenticated_record_bytes_v1`, no deriva de la
+clave mediante hash o truncamiento, no revela la clave y no la sustituye.
+
+El `key_id` debe ser único dentro del corpus o campaña experimental. Una
+colisión detectada invalida la preparación de la unidad experimental. Los
+fixtures podrán transportarlo como hexadecimal lowercase de exactamente
+32 caracteres, exclusivamente como transporte no normativo.
+
+Esta propuesta no define una representación normativa SQLite, Java, UUID o de
+red.
+
+### 4. Asociación y resolución
+
+La asociación candidata es:
+
+```text
+(ledger_id, key_id) -> key_bytes
+```
+
+El resolver debe comprobar ambos identificadores. La ausencia de la asociación
+produce `UNKNOWN_KEY`. Si el `key_id` está asociado a otro ledger, la
+resolución produce `UNKNOWN_KEY` o un fallo equivalente de resolución y no
+intenta HMAC con la clave de ese otro ledger.
+
+Una clave configurada con longitud distinta de 32 octetos causa un fallo de
+preparación o configuración antes de iniciar la verificación; no produce
+`INVALID_TAG`. `INVALID_TAG` solo puede producirse después de resolver una
+clave válida de 32 octetos y comparar el HMAC completo.
+
+Esta asociación no constituye una API, una clase ni un schema ejecutable.
+
+### 5. Provisión al protector y verificador
+
+La candidata propone provisión previa mediante registros en memoria. Protector
+y verificador reciben la relación `(ledger_id, key_id) -> key_bytes` antes de
+comenzar la región medida. Pueden utilizar instancias separadas de un proveedor
+experimental, cargadas con la misma relación.
+
+La generación o derivación de claves, la lectura de contenedores, el desbloqueo
+y la carga quedan fuera de `append-hot` y `verify-hot`. Una ausencia de
+provisión se registra antes o durante la operación según el punto exacto en que
+se detecte, sin ocultar ni recategorizar el fallo.
+
+Este ADR no selecciona un keystore comercial, un servicio remoto ni una API
+Java.
+
+### 6. Frontera de confianza
+
+En la candidata base, la clave activa existe únicamente en memoria de procesos
+legítimos autorizados y `THR-P1` no obtiene esos bytes. SQLite, WAL, SHM,
+manifests, resultados y evidencia no contienen la clave.
+
+La evidencia puede contener `key_id`, `ledger_id`, tamaño, algoritmo, estado
+de provisión y versión de política. Nunca puede contener la clave, una
+passphrase, una semilla recuperable ni un secreto maestro.
+
+Los core dumps, swap, depuración privilegiada y compromiso del proceso están
+fuera del alcance de `THR-P1`. Esta delimitación no afirma que el diseño sea
+productivamente seguro ni promete borrado perfecto o zeroization garantizada
+por runtimes administrados.
+
+### 7. Rotación
+
+La rotación queda fuera del alcance de
+`ADR002-KEY-POLICY-CANDIDATE-v1`. Un ledger usa una sola asociación activa
+durante la unidad experimental. No se definen periodos, historial ni selección
+de claves antiguas.
+
+Estudiar rotación requerirá un tratamiento y una decisión separados. Excluirla
+reduce variables del caso base, pero no demuestra soporte de rotación.
+
+### 8. Reproducibilidad
+
+#### Vectores candidatos de conformidad
+
+Una tarea posterior podrá proponer una clave fija, pública y marcada
+exactamente como:
+
+```text
+TEST KEY — NOT SECRET — NOT FOR EXPERIMENTAL RUNS
+```
+
+junto con un `key_id` fijo de prueba. Su finalidad exclusiva será reproducir
+bytes HMAC y resultados esperados. Este ADR no genera todavía esa clave ni
+vectores.
+
+#### Corridas experimentales
+
+Las corridas experimentales usarán claves aleatorias nuevas por ledger. La
+reproducibilidad corresponde al procedimiento, versiones, tamaño, proveedor y
+metadatos no secretos, no a publicar el secreto.
+
+Las claves públicas de vectores no pueden reutilizarse en experimentos. Esta
+candidata tampoco selecciona una derivación desde un secreto maestro.
+
+### 9. Evidencia candidata
+
+Como mínimo se proponen estos campos conceptuales no secretos:
+
+- `key_policy_id`;
+- `key_id`;
+- `ledger_id`;
+- `key_length_bytes`;
+- `key_generation_mode`;
+- `provider_kind`;
+- `provisioned_before_measurement`;
+- `rotation_enabled`;
+- estado de resolución.
+
+Son campos conceptuales y no modifican todavía ningún schema. Cada
+incorporación futura requiere trazabilidad y autorización. Ninguno puede
+contener material de clave.
+
+### 10. Fallos y precedencia
+
+La precedencia conceptual candidata es:
+
+1. una configuración inválida de la política o de la clave impide iniciar la
+   unidad experimental;
+2. un `key_id` no resoluble para el `ledger_id` produce `UNKNOWN_KEY`;
+3. con una clave resuelta, un tag con longitud distinta de 32 octetos produce
+   `INVALID_TAG`;
+4. con una clave resuelta, un tag de 32 octetos diferente produce
+   `INVALID_TAG`;
+5. un tag válido permite continuar al contexto secuencial cuando exista.
+
+Esta secuencia no redefine la precedencia completa pendiente en ADR-001.
+
+### 11. Dependencias posteriores
+
+Incluir esta política candidata en ADR-002:
+
+- no aprueba ADR-002;
+- no desbloquea `MEC-A1`;
+- no desbloquea `MET-APPEND-READY-E2E`, que permanece `BLOCKED`;
+- no autoriza implementación productiva;
+- no autoriza regiones de medición;
+- no genera claves, tags ni vectores;
+- no modifica ADR-001;
+- permite preparar posteriormente una solicitud separada de aceptación
+  experimental;
+- solo después de esa aceptación podrán autorizarse vectores HMAC candidatos.
+
 ## Alternativas concretas para el alcance de clave
 
 ### Alternativa A — Clave global del benchmark
+
+**Clasificación respecto de la política propuesta:** no finalista.
 
 Una clave activa compartida por todos los ledgers, datasets y ejecuciones del
 protocolo que adopten la misma versión de mecanismo.
@@ -76,6 +260,8 @@ indebida entre tratamientos.
 
 ### Alternativa B — Clave por ledger
 
+**Clasificación respecto de la política propuesta:** candidata finalista.
+
 Cada `ledger_id` recibe una clave; la misma clave puede reutilizarse al repetir
 operaciones sobre ese ledger conforme al protocolo.
 
@@ -97,6 +283,8 @@ El protocolo tendría que congelar la vida de `ledger_id`, la unicidad de la
 pareja ledger-clave y el tratamiento de recreaciones o copias del ledger.
 
 ### Alternativa C — Clave por dataset
+
+**Clasificación respecto de la política propuesta:** no finalista.
 
 Todos los ledgers o tratamientos derivados de un dataset comparten una clave,
 o cada dataset define el conjunto de claves que utilizarán sus tratamientos.
@@ -120,6 +308,10 @@ selección de clave, aunque no necesariamente del mensaje autenticado.
 
 ### Alternativa D — Clave por ejecución
 
+**Clasificación respecto de la política propuesta:** alternativa de aislamiento
+que podría reconsiderarse si el plan experimental define la ejecución como
+unidad principal.
+
 Cada unidad experimental recibe material nuevo o derivado de forma aislada.
 
 #### Ventajas
@@ -139,18 +331,21 @@ Cada unidad experimental recibe material nuevo o derivado de forma aislada.
 La reproducibilidad se basaría en el procedimiento y la distribución de claves,
 o en una derivación secreta controlada, no en publicar los bytes de la clave.
 
-## Decisiones adicionales de la política
+## Comparación resumida de alternativas
 
-| Dimensión | Alternativas defendibles | Ventajas y desventajas | Consecuencia normativa |
-|---|---|---|---|
-| Tamaño mínimo | exactamente 256 bits; al menos 256 bits con tamaños admitidos congelados | El tamaño exacto simplifica conformidad. Un mínimo permite proveedores distintos, pero puede introducir variación. | Deben definirse unidad, generador, tamaños aceptados y rechazo de claves cortas antes de medir. |
-| Formato de `key_id` | UUID aleatorio; huella pública truncada de la clave; identificador opaco estructurado por alcance | El UUID no revela relación criptográfica, pero necesita registro. La huella detecta errores, pero revela igualdad y exige longitud. El estructurado ayuda a auditar, pero puede filtrar metadatos y acoplar formatos. | Deben fijarse codificación, longitud, sensibilidad, colisiones y ámbito de unicidad. `key_id` nunca sustituye a la clave. |
-| Unicidad de `key_id` | global al experimento; única por proveedor; única solo dentro del ledger o ejecución | Un ámbito global simplifica evidencia, pero exige coordinación. Ámbitos menores reducen coordinación, pero requieren contexto para resolver. | Toda evidencia y toda API futura deben declarar el ámbito aprobado y tratar colisiones como fallo estructurado. |
-| Provisión al protector | clave inyectada en memoria antes de medir; puerto de proveedor consultado antes de medir; contenedor local cifrado desbloqueado mediante secreto externo | La inyección es simple, pero exige disciplina de ciclo de vida. El proveedor desacopla política, pero añade una abstracción. El contenedor prueba restaurabilidad opaca, pero añade carga y desbloqueo. | La región medida debe comenzar solo después de obtener la clave; deben registrarse fallos de provisión fuera de la métrica correspondiente. |
-| Provisión al verificador | misma instancia autorizada; proveedor independiente con la misma clave; contenedor cifrado desbloqueado fuera del dominio local | Compartir instancia reduce complejidad, pero prueba menos separación. Un proveedor independiente modela mejor la frontera, pero aumenta configuración. El contenedor conserva estado local opaco, pero depende de un secreto externo. | Protector y verificador deben resolver el mismo `key_id` sin inferir ni regenerar claves dentro de `verify-hot`. |
-| Almacenamiento y frontera | solo memoria del proceso legítimo; contenedor cifrado local más secreto externo; proveedor experimental fuera del dominio restaurable | Solo memoria minimiza persistencia, pero no modela reinicios. El contenedor permite reinicio, pero su seguridad depende del desbloqueo. El proveedor separa dominios, pero puede ampliar el montaje experimental. | En todas las opciones, los bytes activos y secretos de desbloqueo quedan fuera de lectura por `THR-P1`; el snapshot puede contener como máximo material cifrado opaco y `key_id`. |
-| Rotación | fuera de alcance; un tratamiento experimental separado; incluida en todas las ejecuciones | Excluirla reduce variables. Separarla permite estudiarla sin contaminar el caso base. Incluirla mejora cobertura, pero requiere periodos, selección histórica y errores adicionales. | Si no se aprueba expresamente, no puede asumirse rotación. Si se incluye, deben definirse vigencia, historial de `key_id` y efecto sobre verificabilidad. |
-| Reproducibilidad | aleatoriedad nueva y procedimiento reproducible; derivación determinista desde un secreto maestro externo y etiqueta pública; claves fijas solo para vectores de conformidad | La aleatoriedad evita reutilización, pero cambia tags. La derivación repite resultados, pero el maestro es sensible y la separación de etiquetas debe probarse. Los vectores fijos son auditables, pero no representan secretos experimentales. | La evidencia puede registrar algoritmo, tamaño, proveedor y `key_id`, nunca la clave o una semilla que permita recuperarla. Las claves de prueba no deben reutilizarse en corridas experimentales. |
+| Alternativa | Clasificación candidata | Relación con la política propuesta |
+|---|---|---|
+| Clave global | No finalista | No aísla ledgers y amplía dependencias entre unidades. |
+| Clave por ledger | Candidata finalista | Se alinea con el objeto autenticado, la asociación explícita con `ledger_id`, la resolución conjunta, el aislamiento entre ledgers y la verificación posterior. |
+| Clave por dataset | No finalista | El dataset no coincide necesariamente con la frontera lógica del ledger. |
+| Clave por ejecución | Alternativa de aislamiento | Podría reconsiderarse si el futuro plan experimental define la ejecución como unidad principal. |
+
+La clasificación favorece conceptualmente la clave por ledger porque mantiene
+la selección de clave vinculada al objeto autenticado y obliga al resolver a
+comprobar `ledger_id` y `key_id`. También limita el uso accidental de una
+clave entre ledgers y permite que la verificación posterior solicite
+exactamente la relación esperada. Esta comparación es una justificación
+técnica de la candidata, no una decisión del investigador.
 
 ## Riesgos
 
@@ -164,24 +359,29 @@ o en una derivación secreta controlada, no en publicar los bytes de la clave.
 
 ## Recomendación técnica no vinculante
 
-Conviene evaluar las alternativas privilegiando aislamiento explícito,
-`key_id` opaco y provisión previa a las regiones medidas. Cualquier alternativa
-aprobada debe demostrar que `THR-P1` puede copiar los artefactos locales sin
-obtener los bytes activos ni el secreto que los desbloquea.
+La política `ADR002-KEY-POLICY-CANDIDATE-v1` concreta la alternativa por
+ledger con clave opaca de 32 octetos, `key_id` opaco de 16 octetos, resolución
+conjunta y provisión previa en memoria. Se recomienda someterla posteriormente
+a una solicitud separada de aceptación experimental.
 
-Para reproducibilidad, es preferible registrar el procedimiento y metadatos no
-secretos antes que publicar material capaz de regenerar claves. Esta
-recomendación no selecciona alcance, tamaño, formato de `key_id`, proveedor,
-rotación ni estrategia de aleatoriedad.
+La recomendación permanece no vinculante: no registra aprobación científica,
+no elimina bloqueos y no convierte la política en especificación normativa.
 
 ## Decisión del investigador
 
 PENDING
 
-## Consecuencias de la decisión seleccionada
+## Consecuencias de mantener el candidato pendiente
 
-PENDING. `MEC-A1` permanece `BLOCKED`; no se autoriza provisión, generación,
-derivación, almacenamiento ni rotación concreta.
+- ADR-002 continúa `DRAFT`;
+- `MEC-A1` permanece `BLOCKED`;
+- `MET-APPEND-READY-E2E` permanece `BLOCKED`;
+- no hay implementación autorizada;
+- los vectores de codificación sin HMAC pueden seguir tratándose en tareas
+  independientes;
+- los vectores que requieren tag válido, `key_id` o contexto autenticado
+  permanecen bloqueados hasta una aceptación experimental separada;
+- una futura aceptación experimental no equivale a aprobación normativa.
 
 ## Documentos afectados
 
