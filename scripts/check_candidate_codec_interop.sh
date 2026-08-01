@@ -48,89 +48,17 @@ if [[ -z "${temporary_parent}" || "${temporary_parent}" != /* ||
 	exit 1
 fi
 
-readonly temporary_template="${temporary_parent}/candidate-codec-interop.XXXXXXXXXX"
+readonly temporary_directory_prefix="candidate-codec-interop."
+readonly temporary_suffix_bytes=10
+readonly maximum_temporary_directory_attempts=64
 
-umask 077
-temporary_dir="$(mktemp -d "${temporary_template}")"
-readonly temporary_dir
-
-if [[ -z "${temporary_dir}" || "${temporary_dir}" != /* ]]; then
-	printf 'mktemp did not return a non-empty absolute path\n' >&2
-	exit 1
-fi
-
-temporary_name="${temporary_dir##*/}"
-temporary_returned_parent="${temporary_dir%/*}"
-if [[ -z "${temporary_returned_parent}" ]]; then
-	temporary_returned_parent="/"
-fi
-readonly temporary_name
-readonly temporary_returned_parent
-
-if [[ "${temporary_returned_parent}" != "${temporary_parent}" ||
-	! "${temporary_name}" =~ ^candidate-codec-interop\.[[:alnum:]]{10}$ ||
-	! -d "${temporary_dir}" || -L "${temporary_dir}" ]]; then
-	printf 'mktemp returned an untrusted directory path: %s\n' \
-		"${temporary_dir}" >&2
-	exit 1
-fi
-
-temporary_dir_canonical="$(
-	cd -- "${temporary_dir}" || exit 1
-	pwd -P
-)"
-readonly temporary_dir_canonical
-
-if [[ "${temporary_dir_canonical}" != "${temporary_dir}" ]]; then
-	printf 'mktemp returned a non-canonical directory path: %s\n' \
-		"${temporary_dir}" >&2
-	exit 1
-fi
-
-temporary_uid="$(stat -c '%u' -- "${temporary_dir}")"
-readonly temporary_uid
-
-temporary_mode="$(stat -c '%a' -- "${temporary_dir}")"
-readonly temporary_mode
-
-if [[ "${temporary_uid}" != "${EUID}" ]]; then
-	printf 'mktemp directory owner %s does not match effective UID %s\n' \
-		"${temporary_uid}" \
-		"${EUID}" >&2
-	exit 1
-fi
-
-if [[ ! "${temporary_mode}" =~ ^[0-7]{3,4}$ ]] ||
-	((8#${temporary_mode} & 077)); then
-	printf 'mktemp directory permissions are not private: %s\n' \
-		"${temporary_mode}" >&2
-	exit 1
-fi
-
-shopt -s dotglob nullglob
-temporary_initial_entries=("${temporary_dir}"/*)
-shopt -u dotglob nullglob
-
-if ((${#temporary_initial_entries[@]} != 0)); then
-	printf 'mktemp directory was not initially empty: %s\n' \
-		"${temporary_dir}" >&2
-	exit 1
-fi
-
-readonly go_binary="${temporary_dir}/candidate-codec-go"
-readonly temporary_sentinel="${temporary_dir}/.candidate-codec-interop-owner"
-readonly temporary_owner="candidate-codec-interop:${BASHPID}:${temporary_dir}"
+temporary_dir=""
+temporary_dir_created=0
+temporary_sentinel=""
+temporary_sentinel_created=0
+temporary_owner=""
+go_binary=""
 go_build_started=0
-
-if ! (
-	set -o noclobber
-	printf '%s\n' "${temporary_owner}" >"${temporary_sentinel}"
-); then
-	printf 'failed to establish ownership of temporary directory %s\n' \
-		"${temporary_dir}" >&2
-	rmdir -- "${temporary_dir}" 2>/dev/null || true
-	exit 1
-fi
 
 cleanup() {
 	local original_status=$?
@@ -139,30 +67,38 @@ cleanup() {
 
 	trap - EXIT
 
+	if ((temporary_dir_created == 0)); then
+		exit "${original_status}"
+	fi
+
 	if [[ -e "${temporary_dir}" || -L "${temporary_dir}" ]]; then
-		if [[ ! -d "${temporary_dir}" || -L "${temporary_dir}" ||
-			! -f "${temporary_sentinel}" || -L "${temporary_sentinel}" ]]; then
+		if [[ ! -d "${temporary_dir}" || -L "${temporary_dir}" ]]; then
 			printf 'refusing to clean unverified temporary path %s\n' \
 				"${temporary_dir}" >&2
 			cleanup_status=1
-		elif ! IFS= read -r recorded_owner <"${temporary_sentinel}" ||
-			[[ "${recorded_owner}" != "${temporary_owner}" ]]; then
-			printf 'refusing to clean temporary directory with invalid ownership sentinel %s\n' \
-				"${temporary_dir}" >&2
-			cleanup_status=1
-		elif ((go_build_started != 0)) &&
-			[[ -e "${go_binary}" || -L "${go_binary}" ]] &&
-			! rm -f -- "${go_binary}"; then
-			printf 'failed to remove known Go binary %s\n' \
-				"${go_binary}" >&2
-			cleanup_status=1
 		fi
 
-		if ((cleanup_status == 0)) &&
-			! rm -f -- "${temporary_sentinel}"; then
-			printf 'failed to remove temporary ownership sentinel %s\n' \
-				"${temporary_sentinel}" >&2
-			cleanup_status=1
+		if ((cleanup_status == 0 && temporary_sentinel_created != 0)); then
+			if [[ ! -f "${temporary_sentinel}" || -L "${temporary_sentinel}" ]] ||
+				! IFS= read -r recorded_owner <"${temporary_sentinel}" ||
+				[[ "${recorded_owner}" != "${temporary_owner}" ]]; then
+				printf 'refusing to clean temporary directory with invalid ownership sentinel %s\n' \
+					"${temporary_dir}" >&2
+				cleanup_status=1
+			elif ((go_build_started != 0)) &&
+				[[ -e "${go_binary}" || -L "${go_binary}" ]] &&
+				! rm -f -- "${go_binary}"; then
+				printf 'failed to remove known Go binary %s\n' \
+					"${go_binary}" >&2
+				cleanup_status=1
+			fi
+
+			if ((cleanup_status == 0)) &&
+				! rm -f -- "${temporary_sentinel}"; then
+				printf 'failed to remove temporary ownership sentinel %s\n' \
+					"${temporary_sentinel}" >&2
+				cleanup_status=1
+			fi
 		fi
 
 		if ((cleanup_status == 0)) &&
@@ -179,6 +115,134 @@ cleanup() {
 	exit "${cleanup_status}"
 }
 trap cleanup EXIT
+
+create_owned_temporary_directory() {
+	local attempt
+	local candidate
+	local mkdir_status
+	local suffix
+
+	for ((attempt = 1; attempt <= maximum_temporary_directory_attempts; attempt++)); do
+		if ! suffix="$(
+			od -An -N "${temporary_suffix_bytes}" -tx1 /dev/urandom |
+				tr -d '[:space:]'
+		)"; then
+			printf 'failed to generate a temporary directory suffix\n' >&2
+			return 1
+		fi
+
+		if [[ ! "${suffix}" =~ ^[0-9a-f]{20}$ ]]; then
+			printf 'temporary directory suffix is empty, partial, or malformed\n' >&2
+			return 1
+		fi
+
+		candidate="${temporary_parent}/${temporary_directory_prefix}${suffix}"
+		if mkdir --mode=700 -- "${candidate}"; then
+			temporary_dir="${candidate}"
+			temporary_dir_created=1
+			return 0
+		else
+			mkdir_status=$?
+		fi
+
+		if [[ -e "${candidate}" || -L "${candidate}" ]]; then
+			continue
+		fi
+
+		printf 'failed to create temporary directory %s\n' \
+			"${candidate}" >&2
+		return "${mkdir_status}"
+	done
+
+	printf 'failed to create a unique temporary directory after %d attempts\n' \
+		"${maximum_temporary_directory_attempts}" >&2
+	return 1
+}
+
+umask 077
+create_owned_temporary_directory
+readonly temporary_dir
+readonly temporary_dir_created
+
+if [[ -z "${temporary_dir}" || "${temporary_dir}" != /* ]]; then
+	printf 'created temporary directory is not a non-empty absolute path\n' >&2
+	exit 1
+fi
+
+temporary_name="${temporary_dir##*/}"
+temporary_returned_parent="${temporary_dir%/*}"
+if [[ -z "${temporary_returned_parent}" ]]; then
+	temporary_returned_parent="/"
+fi
+readonly temporary_name
+readonly temporary_returned_parent
+
+if [[ "${temporary_returned_parent}" != "${temporary_parent}" ||
+	! "${temporary_name}" =~ ^candidate-codec-interop\.[0-9a-f]{20}$ ||
+	! -d "${temporary_dir}" || -L "${temporary_dir}" ]]; then
+	printf 'created an untrusted temporary directory path: %s\n' \
+		"${temporary_dir}" >&2
+	exit 1
+fi
+
+temporary_dir_canonical="$(
+	cd -- "${temporary_dir}" || exit 1
+	pwd -P
+)"
+readonly temporary_dir_canonical
+
+if [[ "${temporary_dir_canonical}" != "${temporary_dir}" ]]; then
+	printf 'created a non-canonical temporary directory path: %s\n' \
+		"${temporary_dir}" >&2
+	exit 1
+fi
+
+temporary_uid="$(stat -c '%u' -- "${temporary_dir}")"
+readonly temporary_uid
+
+temporary_mode="$(stat -c '%a' -- "${temporary_dir}")"
+readonly temporary_mode
+
+if [[ "${temporary_uid}" != "${EUID}" ]]; then
+	printf 'temporary directory owner %s does not match effective UID %s\n' \
+		"${temporary_uid}" \
+		"${EUID}" >&2
+	exit 1
+fi
+
+if [[ ! "${temporary_mode}" =~ ^[0-7]{3,4}$ ]] ||
+	((8#${temporary_mode} & 077)); then
+	printf 'temporary directory permissions are not private: %s\n' \
+		"${temporary_mode}" >&2
+	exit 1
+fi
+
+shopt -s dotglob nullglob
+temporary_initial_entries=("${temporary_dir}"/*)
+shopt -u dotglob nullglob
+
+if ((${#temporary_initial_entries[@]} != 0)); then
+	printf 'temporary directory was not initially empty: %s\n' \
+		"${temporary_dir}" >&2
+	exit 1
+fi
+
+go_binary="${temporary_dir}/candidate-codec-go"
+readonly go_binary
+temporary_sentinel="${temporary_dir}/.candidate-codec-interop-owner"
+readonly temporary_sentinel
+temporary_owner="candidate-codec-interop:${BASHPID}:${temporary_dir}"
+readonly temporary_owner
+
+if ! (
+	set -o noclobber
+	printf '%s\n' "${temporary_owner}" >"${temporary_sentinel}"
+); then
+	printf 'failed to write ownership sentinel in temporary directory %s\n' \
+		"${temporary_dir}" >&2
+	exit 1
+fi
+temporary_sentinel_created=1
 
 source_commit="$(
 	git -C "${repository_root}" rev-parse HEAD

@@ -18,6 +18,12 @@ readonly real_go
 real_python="$(command -v python3)"
 readonly real_python
 
+real_od="$(command -v od)"
+readonly real_od
+
+real_mkdir="$(command -v mkdir)"
+readonly real_mkdir
+
 script_dir="$(
 	cd -- "$(dirname -- "${BASH_SOURCE[0]}")" || exit 1
 	pwd
@@ -31,6 +37,8 @@ repository_root="$(
 readonly repository_root
 readonly target_script="${repository_root}/scripts/check_candidate_codec_interop.sh"
 readonly sentinel_name=".candidate-codec-interop-owner"
+readonly fixed_suffix="00112233445566778899"
+readonly maximum_attempts=64
 
 external_tmp_parent="${CANDIDATE_CODEC_TEST_TMPDIR:-/var/tmp}"
 while [[ "${external_tmp_parent}" != "/" && "${external_tmp_parent}" == */ ]]; do
@@ -75,16 +83,90 @@ assert_repository_unchanged() {
 	fi
 }
 
-write_recording_mktemp() {
+assert_directory_empty() {
+	local directory="$1"
+	local label="$2"
+
+	if find "${directory}" -mindepth 1 -print -quit | grep -q .; then
+		fail "${label} left residual files in ${directory}"
+	fi
+}
+
+assert_no_candidate_directories() {
+	local directory="$1"
+	local label="$2"
+
+	if find "${directory}" -mindepth 1 -maxdepth 1 \
+		-name 'candidate-codec-interop.*' -print -quit | grep -q .; then
+		fail "${label} left or adopted a candidate temporary directory"
+	fi
+}
+
+assert_no_sentinel() {
+	local directory="$1"
+	local label="$2"
+
+	if find "${directory}" -name "${sentinel_name}" -print -quit | grep -q .; then
+		fail "${label} left or wrote an ownership sentinel"
+	fi
+}
+
+assert_od_call_count() {
+	local call_log="$1"
+	local expected="$2"
+	local label="$3"
+	local -a calls=()
+
+	if [[ -f "${call_log}" ]]; then
+		mapfile -t calls <"${call_log}"
+	fi
+	if (("${#calls[@]}" != expected)); then
+		fail "${label} made ${#calls[@]} suffix-generation calls, want ${expected}"
+	fi
+}
+
+write_od_stub() {
 	local destination="$1"
 
 	cat >"${destination}" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\0' "$@" >"${MKTEMP_ARGS_RECORD:?}"
-created_dir="$("${REAL_MKTEMP:?}" "$@")"
-printf '%s\0' "${created_dir}" >"${MKTEMP_RESULT_RECORD:?}"
-printf '%s\n' "${created_dir}"
+if (($# != 5)) ||
+	[[ "$1" != "-An" || "$2" != "-N" || "$3" != "10" ||
+		"$4" != "-tx1" || "$5" != "/dev/urandom" ]]; then
+	printf 'unexpected od invocation\n' >&2
+	exit 98
+fi
+printf 'od\n' >>"${OD_CALL_LOG:?}"
+if [[ "${OD_FAIL:-0}" == "1" ]]; then
+	exit 71
+fi
+if [[ -n "${FIXED_SUFFIX:-}" ]]; then
+	printf '%s\n' "${FIXED_SUFFIX}"
+	exit 0
+fi
+exec "${REAL_OD:?}" "$@"
+STUB
+	chmod +x "${destination}"
+}
+
+write_mkdir_stub() {
+	local destination="$1"
+
+	cat >"${destination}" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if (($# != 3)) ||
+	[[ "$1" != "--mode=700" || "$2" != "--" ||
+		"$3" != "${EXPECTED_CANDIDATE:?}" ]]; then
+	printf 'unexpected mkdir invocation\n' >&2
+	exit 98
+fi
+printf '%s\n' "$3" >>"${MKDIR_CALL_LOG:?}"
+if [[ "${MKDIR_FAIL:-0}" == "1" ]]; then
+	exit 79
+fi
+exec "${REAL_MKDIR:?}" "$@"
 STUB
 	chmod +x "${destination}"
 }
@@ -96,25 +178,25 @@ write_go_preflight_stub() {
 #!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in
-	version)
-		if [[ "${GO_FAIL_PHASE:-}" == "version" ]]; then
-			exit 74
-		fi
-		exec "${REAL_GO:?}" "$@"
-		;;
-	list)
-		if [[ "${GO_FAIL_PHASE:-}" == "list" ]]; then
-			exit 75
-		fi
-		exec "${REAL_GO:?}" "$@"
-		;;
-	build)
-		printf 'go-build-called\n' >"${GO_BUILD_MARKER:?}"
-		exit 97
-		;;
-	*)
-		exec "${REAL_GO:?}" "$@"
-		;;
+version)
+	if [[ "${GO_FAIL_PHASE:-}" == "version" ]]; then
+		exit 74
+	fi
+	exec "${REAL_GO:?}" "$@"
+	;;
+list)
+	if [[ "${GO_FAIL_PHASE:-}" == "list" ]]; then
+		exit 75
+	fi
+	exec "${REAL_GO:?}" "$@"
+	;;
+build)
+	printf 'go-build-called\n' >"${GO_BUILD_MARKER:?}"
+	exit 97
+	;;
+*)
+	exec "${REAL_GO:?}" "$@"
+	;;
 esac
 STUB
 	chmod +x "${destination}"
@@ -162,160 +244,185 @@ STUB
 	chmod +x "${destination}"
 }
 
-observed_temporary_dir=""
-
-assert_mktemp_contract() {
-	local args_record="$1"
-	local result_record="$2"
-	local configured_tmpdir="$3"
-	local label="$4"
-	local expected_template="${configured_tmpdir}/candidate-codec-interop.XXXXXXXXXX"
-	local -a received_args=()
-
-	if [[ ! -f "${args_record}" || ! -f "${result_record}" ]]; then
-		fail "${label} did not record mktemp arguments and result"
-	fi
-
-	mapfile -d '' -t received_args <"${args_record}"
-	if ((${#received_args[@]} != 2)); then
-		fail "${label} passed ${#received_args[@]} arguments to mktemp, want 2"
-	fi
-	if [[ "${received_args[0]}" != "-d" ]]; then
-		fail "${label} did not pass -d to mktemp"
-	fi
-	if [[ "${received_args[1]}" != "${expected_template}" ]]; then
-		fail "${label} passed an unexpected mktemp template: ${received_args[1]}"
-	fi
-	if [[ "${received_args[1]}" == /tmp/* ]]; then
-		fail "${label} forced the mktemp template under /tmp"
-	fi
-
-	observed_temporary_dir=""
-	IFS= read -r -d '' observed_temporary_dir <"${result_record}" ||
-		fail "${label} recorded an ambiguous mktemp result"
-	if [[ "${observed_temporary_dir}" != "${configured_tmpdir}/"* ]]; then
-		fail "${label} mktemp result escaped configured TMPDIR: ${observed_temporary_dir}"
-	fi
-}
-
-assert_directory_empty() {
-	local directory="$1"
-	local label="$2"
-
-	if find "${directory}" -mindepth 1 -print -quit | grep -q .; then
-		fail "${label} left residual files in ${directory}"
-	fi
-}
-
-test_mktemp_failure_stops_before_go_build() {
-	local scenario_dir="${test_root}/mktemp-failure"
+test_random_generation_failure_stops_before_go_build() {
+	local scenario_dir="${test_root}/random-generation-failure"
 	local fake_bin="${scenario_dir}/bin"
 	local target_tmpdir="${scenario_dir}/target-tmp"
+	local od_call_log="${scenario_dir}/od-calls"
 	local go_marker="${scenario_dir}/go-build-called"
 	local output="${scenario_dir}/output"
 	local before_state
 	local status
 
 	mkdir -p "${fake_bin}" "${target_tmpdir}"
-	cat >"${fake_bin}/mktemp" <<'STUB'
-#!/usr/bin/env bash
-exit 71
-STUB
-	chmod +x "${fake_bin}/mktemp"
+	write_od_stub "${fake_bin}/od"
 	write_go_preflight_stub "${fake_bin}/go"
 	before_state="$(repository_state)"
 
 	set +e
 	GO_BUILD_MARKER="${go_marker}" \
+		OD_CALL_LOG="${od_call_log}" \
+		OD_FAIL=1 \
 		PATH="${fake_bin}:${PATH}" \
 		REAL_GO="${real_go}" \
+		REAL_OD="${real_od}" \
 		TMPDIR="${target_tmpdir}" \
 		bash "${target_script}" >"${output}" 2>&1
 	status=$?
 	set -e
 
 	if ((status == 0)); then
-		fail "mktemp failure returned success"
+		fail "random generation failure returned success"
 	fi
 	if [[ -e "${go_marker}" ]]; then
-		fail "go build ran after mktemp failure"
+		fail "go build ran after random generation failure"
 	fi
-	assert_directory_empty "${target_tmpdir}" "mktemp failure"
-	assert_repository_unchanged "${before_state}" "mktemp failure"
-	printf 'ok - mktemp failure stops before go build\n'
+	assert_od_call_count "${od_call_log}" 1 "random generation failure"
+	assert_directory_empty "${target_tmpdir}" "random generation failure"
+	assert_no_candidate_directories "${target_tmpdir}" "random generation failure"
+	assert_no_sentinel "${target_tmpdir}" "random generation failure"
+	assert_repository_unchanged "${before_state}" "random generation failure"
+	printf 'ok - random generation failure stops before mkdir and go build\n'
 }
 
-test_preexisting_mktemp_directory_is_preserved() {
-	local scenario_dir="${test_root}/mktemp-preexisting"
+test_preexisting_directory_is_preserved() {
+	local variant="$1"
+	local scenario_dir="${test_root}/preexisting-${variant}"
 	local fake_bin="${scenario_dir}/bin"
 	local target_tmpdir="${scenario_dir}/target-tmp"
-	local preexisting_dir="${target_tmpdir}/candidate-codec-interop.ABCDEFGHIJ"
+	local preexisting_dir="${target_tmpdir}/candidate-codec-interop.${fixed_suffix}"
 	local foreign_file="${preexisting_dir}/foreign-data"
-	local args_record="${scenario_dir}/mktemp-args"
-	local result_record="${scenario_dir}/mktemp-result"
+	local od_call_log="${scenario_dir}/od-calls"
 	local go_marker="${scenario_dir}/go-build-called"
 	local output="${scenario_dir}/output"
 	local before_state
 	local directory_metadata
-	local file_metadata
-	local foreign_content
+	local foreign_checksum=""
+	local file_metadata=""
 	local status
 
 	mkdir -p "${fake_bin}" "${preexisting_dir}"
 	chmod 700 "${preexisting_dir}"
-	printf 'foreign-content-must-survive\n' >"${foreign_file}"
+	if [[ "${variant}" == "data" ]]; then
+		printf 'foreign-content-must-survive\n' >"${foreign_file}"
+		foreign_checksum="$(sha256sum -- "${foreign_file}")"
+		file_metadata="$(stat -c '%u:%g:%a:%s:%y:%z' -- "${foreign_file}")"
+	fi
 	directory_metadata="$(stat -c '%u:%g:%a:%s:%y:%z' -- "${preexisting_dir}")"
-	file_metadata="$(stat -c '%u:%g:%a:%s:%y:%z' -- "${foreign_file}")"
-	foreign_content="$(<"${foreign_file}")"
 
-	cat >"${fake_bin}/mktemp" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\0' "$@" >"${MKTEMP_ARGS_RECORD:?}"
-printf '%s\0' "${PREEXISTING_DIR:?}" >"${MKTEMP_RESULT_RECORD:?}"
-printf '%s\n' "${PREEXISTING_DIR}"
-STUB
-	chmod +x "${fake_bin}/mktemp"
+	write_od_stub "${fake_bin}/od"
 	write_go_preflight_stub "${fake_bin}/go"
 	before_state="$(repository_state)"
 
 	set +e
-	GO_BUILD_MARKER="${go_marker}" \
-		MKTEMP_ARGS_RECORD="${args_record}" \
-		MKTEMP_RESULT_RECORD="${result_record}" \
+	FIXED_SUFFIX="${fixed_suffix}" \
+		GO_BUILD_MARKER="${go_marker}" \
+		OD_CALL_LOG="${od_call_log}" \
 		PATH="${fake_bin}:${PATH}" \
-		PREEXISTING_DIR="${preexisting_dir}" \
 		REAL_GO="${real_go}" \
+		REAL_OD="${real_od}" \
 		TMPDIR="${target_tmpdir}" \
 		bash "${target_script}" >"${output}" 2>&1
 	status=$?
 	set -e
 
 	if ((status == 0)); then
-		fail "preexisting mktemp directory was accepted"
+		fail "preexisting ${variant} directory was accepted"
 	fi
 	if [[ -e "${go_marker}" ]]; then
-		fail "go build ran for a preexisting mktemp directory"
+		fail "go build ran for a preexisting ${variant} directory"
 	fi
-	if [[ ! -d "${preexisting_dir}" || ! -f "${foreign_file}" ]]; then
-		fail "preexisting mktemp directory or foreign file was removed"
+	if [[ ! -d "${preexisting_dir}" ]]; then
+		fail "preexisting ${variant} directory was removed"
 	fi
 	if [[ -e "${preexisting_dir}/${sentinel_name}" ]]; then
-		fail "ownership sentinel was written into preexisting directory"
+		fail "ownership sentinel was written into preexisting ${variant} directory"
 	fi
-	if [[ "$(<"${foreign_file}")" != "${foreign_content}" ||
-	"$(stat -c '%u:%g:%a:%s:%y:%z' -- "${foreign_file}")" != "${file_metadata}" ||
-	"$(stat -c '%u:%g:%a:%s:%y:%z' -- "${preexisting_dir}")" != "${directory_metadata}" ]]; then
-		fail "preexisting directory data or metadata changed"
+	if [[ "$(stat -c '%u:%g:%a:%s:%y:%z' -- "${preexisting_dir}")" != "${directory_metadata}" ]]; then
+		fail "preexisting ${variant} directory metadata changed"
 	fi
-	assert_mktemp_contract \
-		"${args_record}" "${result_record}" "${target_tmpdir}" \
-		"preexisting mktemp directory"
-	if [[ "${observed_temporary_dir}" != "${preexisting_dir}" ]]; then
-		fail "preexisting mktemp stub returned an unexpected path"
+
+	if [[ "${variant}" == "empty" ]]; then
+		assert_directory_empty "${preexisting_dir}" "preexisting empty directory"
+	else
+		if [[ ! -f "${foreign_file}" ||
+			"$(sha256sum -- "${foreign_file}")" != "${foreign_checksum}" ||
+			"$(stat -c '%u:%g:%a:%s:%y:%z' -- "${foreign_file}")" != "${file_metadata}" ]]; then
+			fail "preexisting foreign data or metadata changed"
+		fi
 	fi
-	assert_repository_unchanged "${before_state}" "preexisting mktemp directory"
-	printf 'ok - preexisting mktemp directory and foreign data are preserved\n'
+
+	assert_od_call_count "${od_call_log}" "${maximum_attempts}" \
+		"preexisting ${variant} directory"
+	assert_repository_unchanged "${before_state}" \
+		"preexisting ${variant} directory"
+	printf 'ok - preexisting %s directory survives all collision attempts unchanged\n' \
+		"${variant}"
+}
+
+test_mkdir_failure_stops_without_cleanup() {
+	local scenario_dir="${test_root}/mkdir-failure"
+	local fake_bin="${scenario_dir}/bin"
+	local target_tmpdir="${scenario_dir}/target-tmp"
+	local expected_candidate="${target_tmpdir}/candidate-codec-interop.${fixed_suffix}"
+	local foreign_dir="${target_tmpdir}/unrelated"
+	local foreign_file="${foreign_dir}/foreign-data"
+	local od_call_log="${scenario_dir}/od-calls"
+	local mkdir_call_log="${scenario_dir}/mkdir-calls"
+	local go_marker="${scenario_dir}/go-build-called"
+	local output="${scenario_dir}/output"
+	local before_state
+	local foreign_checksum
+	local foreign_metadata
+	local status
+
+	mkdir -p "${fake_bin}" "${foreign_dir}"
+	printf 'unrelated-data-must-survive\n' >"${foreign_file}"
+	foreign_checksum="$(sha256sum -- "${foreign_file}")"
+	foreign_metadata="$(stat -c '%u:%g:%a:%s:%y:%z' -- "${foreign_file}")"
+	write_od_stub "${fake_bin}/od"
+	write_mkdir_stub "${fake_bin}/mkdir"
+	write_go_preflight_stub "${fake_bin}/go"
+	before_state="$(repository_state)"
+
+	set +e
+	EXPECTED_CANDIDATE="${expected_candidate}" \
+		FIXED_SUFFIX="${fixed_suffix}" \
+		GO_BUILD_MARKER="${go_marker}" \
+		MKDIR_CALL_LOG="${mkdir_call_log}" \
+		MKDIR_FAIL=1 \
+		OD_CALL_LOG="${od_call_log}" \
+		PATH="${fake_bin}:${PATH}" \
+		REAL_GO="${real_go}" \
+		REAL_MKDIR="${real_mkdir}" \
+		REAL_OD="${real_od}" \
+		TMPDIR="${target_tmpdir}" \
+		bash "${target_script}" >"${output}" 2>&1
+	status=$?
+	set -e
+
+	if ((status == 0)); then
+		fail "mkdir failure returned success"
+	fi
+	if [[ -e "${go_marker}" ]]; then
+		fail "go build ran after mkdir failure"
+	fi
+	if [[ -e "${expected_candidate}" || -L "${expected_candidate}" ]]; then
+		fail "mkdir failure left a candidate path"
+	fi
+	if [[ ! -f "${foreign_file}" ||
+		"$(sha256sum -- "${foreign_file}")" != "${foreign_checksum}" ||
+		"$(stat -c '%u:%g:%a:%s:%y:%z' -- "${foreign_file}")" != "${foreign_metadata}" ]]; then
+		fail "mkdir failure cleaned or modified an unrelated path"
+	fi
+	assert_od_call_count "${od_call_log}" 1 "mkdir failure"
+	if [[ "$(<"${mkdir_call_log}")" != "${expected_candidate}" ]]; then
+		fail "mkdir failure stub recorded an unexpected candidate"
+	fi
+	assert_no_candidate_directories "${target_tmpdir}" "mkdir failure"
+	assert_no_sentinel "${target_tmpdir}" "mkdir failure"
+	assert_repository_unchanged "${before_state}" "mkdir failure"
+	printf 'ok - non-collision mkdir failure stops without cleanup of foreign paths\n'
 }
 
 test_preflight_failure_stops_before_go_build() {
@@ -323,8 +430,7 @@ test_preflight_failure_stops_before_go_build() {
 	local scenario_dir="${test_root}/${phase}"
 	local fake_bin="${scenario_dir}/bin"
 	local target_tmpdir="${scenario_dir}/target-tmp"
-	local args_record="${scenario_dir}/mktemp-args"
-	local result_record="${scenario_dir}/mktemp-result"
+	local od_call_log="${scenario_dir}/od-calls"
 	local go_marker="${scenario_dir}/go-build-called"
 	local output="${scenario_dir}/output"
 	local go_fail_phase=""
@@ -332,7 +438,7 @@ test_preflight_failure_stops_before_go_build() {
 	local status
 
 	mkdir -p "${fake_bin}" "${target_tmpdir}"
-	write_recording_mktemp "${fake_bin}/mktemp"
+	write_od_stub "${fake_bin}/od"
 	write_go_preflight_stub "${fake_bin}/go"
 
 	case "${phase}" in
@@ -358,14 +464,14 @@ test_preflight_failure_stops_before_go_build() {
 
 	before_state="$(repository_state)"
 	set +e
-	GO_BUILD_MARKER="${go_marker}" \
+	FIXED_SUFFIX="${fixed_suffix}" \
+		GO_BUILD_MARKER="${go_marker}" \
 		GO_FAIL_PHASE="${go_fail_phase}" \
-		MKTEMP_ARGS_RECORD="${args_record}" \
-		MKTEMP_RESULT_RECORD="${result_record}" \
+		OD_CALL_LOG="${od_call_log}" \
 		PATH="${fake_bin}:${PATH}" \
 		REAL_GIT="${real_git}" \
 		REAL_GO="${real_go}" \
-		REAL_MKTEMP="${real_mktemp}" \
+		REAL_OD="${real_od}" \
 		REAL_PYTHON="${real_python}" \
 		TMPDIR="${target_tmpdir}" \
 		bash "${target_script}" >"${output}" 2>&1
@@ -378,13 +484,10 @@ test_preflight_failure_stops_before_go_build() {
 	if [[ -e "${go_marker}" ]]; then
 		fail "go build ran after ${phase} failure"
 	fi
-	assert_mktemp_contract \
-		"${args_record}" "${result_record}" "${target_tmpdir}" \
-		"${phase} failure"
-	if [[ -e "${observed_temporary_dir}" ]]; then
-		fail "temporary directory survived ${phase} failure: ${observed_temporary_dir}"
-	fi
+	assert_od_call_count "${od_call_log}" 1 "${phase} failure"
 	assert_directory_empty "${target_tmpdir}" "${phase} failure"
+	assert_no_candidate_directories "${target_tmpdir}" "${phase} failure"
+	assert_no_sentinel "${target_tmpdir}" "${phase} failure"
 	assert_repository_unchanged "${before_state}" "${phase} failure"
 	printf 'ok - %s failure cleans and stops before go build\n' "${phase}"
 }
@@ -393,20 +496,25 @@ test_external_tmpdir_is_cleaned_after_success() {
 	local scenario_dir="${test_root}/external-tmpdir"
 	local fake_bin="${scenario_dir}/bin"
 	local target_tmpdir="${scenario_dir}/target-tmp"
-	local args_record="${scenario_dir}/mktemp-args"
-	local result_record="${scenario_dir}/mktemp-result"
+	local expected_candidate="${target_tmpdir}/candidate-codec-interop.${fixed_suffix}"
+	local od_call_log="${scenario_dir}/od-calls"
+	local mkdir_call_log="${scenario_dir}/mkdir-calls"
 	local output="${scenario_dir}/output"
 	local before_state
 
 	mkdir -p "${fake_bin}" "${target_tmpdir}"
-	write_recording_mktemp "${fake_bin}/mktemp"
+	write_od_stub "${fake_bin}/od"
+	write_mkdir_stub "${fake_bin}/mkdir"
 	before_state="$(repository_state)"
 
-	MKTEMP_ARGS_RECORD="${args_record}" \
-		MKTEMP_RESULT_RECORD="${result_record}" \
+	EXPECTED_CANDIDATE="${expected_candidate}" \
+		FIXED_SUFFIX="${fixed_suffix}" \
+		MKDIR_CALL_LOG="${mkdir_call_log}" \
+		OD_CALL_LOG="${od_call_log}" \
 		PATH="${fake_bin}:${PATH}" \
 		PYTHONDONTWRITEBYTECODE=1 \
-		REAL_MKTEMP="${real_mktemp}" \
+		REAL_MKDIR="${real_mkdir}" \
+		REAL_OD="${real_od}" \
 		TMPDIR="${target_tmpdir}" \
 		bash "${target_script}" >"${output}" 2>&1
 
@@ -415,15 +523,18 @@ test_external_tmpdir_is_cleaned_after_success() {
 		"${output}"; then
 		fail "external TMPDIR scenario did not complete interoperability"
 	fi
-	assert_mktemp_contract \
-		"${args_record}" "${result_record}" "${target_tmpdir}" \
-		"external TMPDIR success"
-	if [[ -e "${observed_temporary_dir}" ]]; then
-		fail "temporary directory survived successful execution: ${observed_temporary_dir}"
+	assert_od_call_count "${od_call_log}" 1 "external TMPDIR success"
+	if [[ "$(<"${mkdir_call_log}")" != "${expected_candidate}" ]]; then
+		fail "external TMPDIR used an unexpected mkdir candidate"
+	fi
+	if [[ -e "${expected_candidate}" || -L "${expected_candidate}" ]]; then
+		fail "temporary directory survived successful execution"
 	fi
 	assert_directory_empty "${target_tmpdir}" "external TMPDIR success"
+	assert_no_candidate_directories "${target_tmpdir}" "external TMPDIR success"
+	assert_no_sentinel "${target_tmpdir}" "external TMPDIR success"
 	assert_repository_unchanged "${before_state}" "external TMPDIR success"
-	printf 'ok - non-/tmp TMPDIR uses exact mktemp arguments and leaves no residue\n'
+	printf 'ok - non-/tmp TMPDIR uses exclusive mkdir and leaves no residue\n'
 }
 
 scenario_count=0
@@ -433,8 +544,10 @@ run_scenario() {
 	((scenario_count += 1))
 }
 
-run_scenario test_mktemp_failure_stops_before_go_build
-run_scenario test_preexisting_mktemp_directory_is_preserved
+run_scenario test_random_generation_failure_stops_before_go_build
+run_scenario test_preexisting_directory_is_preserved empty
+run_scenario test_preexisting_directory_is_preserved data
+run_scenario test_mkdir_failure_stops_without_cleanup
 run_scenario test_preflight_failure_stops_before_go_build git-rev-parse
 run_scenario test_preflight_failure_stops_before_go_build uname
 run_scenario test_preflight_failure_stops_before_go_build go-version
