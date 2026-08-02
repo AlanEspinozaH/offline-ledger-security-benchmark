@@ -620,19 +620,27 @@ Fecha de aprobación: 2026-08-02
 
 ### Trabajo derivado autorizado
 
-Esta decisión autoriza preparar, en tareas posteriores y separadas:
+Esta transición autoriza sincronizar dentro del mismo cambio, y únicamente con
+alcance documental, el estado de ADR-002 y los bloqueos vigentes en:
+
+- `docs/06-mechanism-specifications.md`;
+- `docs/16-traceability-matrix.csv`.
+
+Esta sincronización no implementa `MEC-A1`, no selecciona una API o proveedor,
+no genera claves, tags o vectores y no autoriza mediciones oficiales.
+
+La decisión también autoriza preparar, en tareas posteriores y separadas:
 
 - una especificación derivada del proveedor experimental de claves;
 - reglas de ciclo de vida y reprovisión del harness;
 - casos de prueba para aislamiento, asociación cruzada y continuidad;
-- armonización de `docs/06-mechanism-specifications.md`;
 - armonización de `docs/13-harness-architecture.md`;
-- armonización de `docs/16-traceability-matrix.csv`;
 - un plan de vectores HMAC después de resolver la codificación autenticada de
   ADR-001.
 
-Cada tarea requiere su propio alcance, manifest, revisión y autorización. Esta
-aprobación no autoriza modificar esos documentos dentro de este cambio.
+Cada tarea posterior requiere su propio alcance, manifest, revisión y
+autorización. Cualquier cambio funcional o normativo adicional en los
+consumidores sincronizados también requiere una tarea separada.
 
 ### Dependencias resueltas y bloqueos vigentes
 
