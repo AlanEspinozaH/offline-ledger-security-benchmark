@@ -424,9 +424,8 @@ Se selecciona la alternativa B como alcance normativo: cada instancia lógica de
 ledger posee una clave HMAC independiente. Ninguna clave puede proteger dos
 `ledger_id` distintos.
 
-Para los tratamientos que instancien `MEC-A1`, la unidad experimental se
-define mediante una combinación concreta de tratamiento, escenario y
-repetición. Cada nueva unidad experimental de `MEC-A1` crea:
+Para los tratamientos que instancien `MEC-A1`, cada unidad experimental
+completa, tal como la defina el plan experimental aprobado, crea:
 
 - una instancia lógica y de almacenamiento independiente de ledger;
 - un nuevo `ledger_id`;
@@ -492,9 +491,18 @@ Protector y verificador deben poder obtener la misma asociación durante todo el
 ciclo de vida mediante un proveedor autorizado fuera de la capacidad de
 `THR-P1`.
 
-La clave activa y cualquier material que permita reconstruirla pueden
-existir en memoria de procesos legítimos autorizados, pero no pueden aparecer
-en:
+Durante el ciclo de vida autorizado de una unidad de `MEC-A1`, la clave
+activa y cualquier material que permita reconstruirla pueden existir únicamente
+en memoria de procesos legítimos autorizados y no se persisten.
+
+La continuidad entre creación, cierre, ataque offline, reapertura y verificación
+debe conservar la misma asociación únicamente en memoria autorizada durante la
+unidad experimental completa. La pérdida de esa asociación no autoriza
+regenerar, derivar o sustituir silenciosamente la clave.
+
+La clave y el material reconstructivo no se persisten en ningún soporte,
+incluidos keystores, contenedores, archivos, bases de datos o servicios locales
+o remotos. En particular, no pueden aparecer en:
 
 - SQLite;
 - WAL;
@@ -512,8 +520,9 @@ del dominio local restaurable:
 - secretos maestros;
 - material derivador equivalente.
 
-Este requisito de continuidad no selecciona todavía un keystore, contenedor,
-servicio, archivo, API Java ni mecanismo productivo de persistencia.
+ADR-002 v0.3.0 no selecciona la topología o API del proveedor experimental. Una
+futura política de persistencia requeriría una decisión científica separada y no
+está autorizada por esta versión.
 
 ### Medición
 
@@ -556,7 +565,7 @@ usarse en corridas experimentales.
 | A — clave global | `REJECTED` | Comparte una causa secreta entre todas las unidades y amplía el impacto de fallos o exposición. |
 | B — clave por ledger | `SELECTED_SCOPE` | Define el objeto lógico propietario de la clave. |
 | C — clave por dataset | `REJECTED` | Puede compartir una clave entre tratamientos, escenarios o repeticiones que usan el mismo dataset. |
-| D — clave por ejecución | `SELECTED_INSTANTIATION_RULE` | Se acepta únicamente para unidades de `MEC-A1` y cuando “ejecución” significa la unidad experimental completa que crea una nueva instancia de ledger; no significa apertura, proceso o fase. |
+| D — clave por ejecución | `SELECTED_INSTANTIATION_RULE` | Se acepta únicamente cuando “ejecución” significa una unidad experimental completa de `MEC-A1`, tal como la defina el plan experimental aprobado; no significa apertura, proceso o fase. |
 
 Los valores de la tabla describen exclusivamente el papel decidido dentro de
 ADR-002 y no crean nuevos estados documentales generales.
@@ -573,9 +582,9 @@ ledger y una nueva asociación para cada nueva unidad experimental que instancie
 reapertura, verificación y reverificación del mismo artefacto.
 
 La reapertura del mismo ledger no constituye una ejecución independiente y no
-genera una clave nueva. Una nueva combinación de tratamiento, escenario y
-repetición que instancie `MEC-A1` sí constituye una unidad nueva y recibe nuevo
-`ledger_id`, nuevo `key_id` y nueva clave.
+genera una clave nueva. Cada nueva unidad experimental completa que instancie
+`MEC-A1`, conforme al plan experimental aprobado, recibe nuevo `ledger_id`,
+nuevo `key_id` y nueva clave.
 
 Decidido por: Alan Espinoza
 
