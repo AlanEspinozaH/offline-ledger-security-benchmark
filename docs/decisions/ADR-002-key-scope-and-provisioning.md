@@ -1,13 +1,42 @@
 ---
 decision_id: ADR-002
 title: Key scope and provisioning
-version: 0.2.0
-status: DRAFT
-date: PENDING
-decided_by: PENDING
+version: 0.3.0
+status: APPROVED
+date: 2026-08-02
+decided_by: Alan Espinoza
 ---
 
 # ADR-002 — Alcance y provisión de claves
+
+## Estado y alcance del expediente
+
+Este expediente registra la decisión aprobada por el investigador sobre el
+alcance, identificación, provisión, continuidad y frontera de confianza de las
+claves HMAC utilizadas por `MEC-A1`.
+
+Historial:
+
+- ADR-002 v0.2.0 documentó
+  `ADR002-KEY-POLICY-CANDIDATE-v1` como candidata no normativa.
+- ADR-002 v0.3.0 selecciona una clave por instancia lógica de ledger y congela
+  la regla de creación y continuidad de la relación ledger-clave.
+- v0.3.0 sustituye documentalmente a v0.2.0 como versión vigente.
+- La sección candidata se conserva como antecedente de la evaluación y no como
+  política normativa vigente.
+
+La política aprobada se identifica mediante `ADR-002 v0.3.0`. El identificador
+`ADR002-KEY-POLICY-CANDIDATE-v1` permanece únicamente como identificador
+histórico de la propuesta evaluada.
+
+La aprobación resuelve la dependencia científica de política de claves, pero no
+define todavía clases Java, tablas SQLite, formatos de almacenamiento,
+keystores, servicios remotos, generación efectiva de claves, vectores HMAC,
+regiones de medición ni una implementación productiva de gestión de secretos.
+
+Decidido por: Alan Espinoza
+
+Fecha de aprobación: 2026-08-02
 
 ## Contexto
 
@@ -18,12 +47,13 @@ desbloqueo. El diseño experimental debe instanciar esa frontera sin construir
 una infraestructura productiva de gestión de secretos.
 
 Las claves deben estar disponibles antes de cualquier región `append-hot` o
-`verify-hot` que las declare precargadas. Este ADR delimita la decisión
-pendiente; no define una API Java, un keystore comercial ni un servicio remoto.
+`verify-hot` que las declare precargadas. Este ADR registra la política
+experimental aprobada, pero no define una API Java, un keystore comercial ni un
+servicio remoto.
 
 ## Problema exacto que requiere decisión
 
-El investigador debe aprobar una política reproducible que determine:
+La decisión aprobada debía seleccionar una política reproducible que determinara:
 
 - alcance de la clave: global, por ledger, por dataset o por ejecución;
 - tamaño mínimo;
@@ -49,16 +79,21 @@ claves, semillas secretas o passphrases en el repositorio o en la evidencia.
 - baja complejidad y ausencia de infraestructura productiva fuera de alcance;
 - capacidad de documentar fallos de provisión sin revelar material sensible.
 
-## Política candidata para experimentación
+## Política candidata considerada
 
-**CANDIDATO NO NORMATIVO**
+**ANTECEDENTE NO NORMATIVO DE ADR-002 v0.2.0**
 
-Identificador de política: `ADR002-KEY-POLICY-CANDIDATE-v1`.
+Identificador histórico:
+`ADR002-KEY-POLICY-CANDIDATE-v1`.
 
-Esta sección propone una política técnica concreta exclusivamente para
-experimentación controlada con `MEC-A1`. La propuesta permanece pendiente de
-aceptación experimental separada y no constituye una decisión del investigador,
-una especificación normativa ni una autorización de implementación.
+Esta sección conserva la propuesta técnica que fue sometida a evaluación. Sus
+formulaciones describen el estado previo a la decisión del investigador. Cuando
+exista una diferencia entre esta sección y `## Resolución aprobada`, prevalece
+la resolución aprobada de ADR-002 v0.3.0.
+
+La candidata no autorizó por sí sola implementación, métricas, claves, tags o
+vectores. Su contenido se conserva para auditar las alternativas consideradas,
+los riesgos identificados y la evolución de la decisión.
 
 ### 1. Alcance de la clave
 
@@ -233,20 +268,15 @@ La precedencia conceptual candidata es:
 
 Esta secuencia no redefine la precedencia completa pendiente en ADR-001.
 
-### 11. Dependencias posteriores
+### 11. Efecto histórico de la candidata
 
-Incluir esta política candidata en ADR-002:
+En ADR-002 v0.2.0, incorporar la candidata no aprobó la decisión, no desbloqueó
+`MEC-A1`, no autorizó implementación y no generó claves, tags o vectores.
 
-- no aprueba ADR-002;
-- no desbloquea `MEC-A1`;
-- no desbloquea `MET-APPEND-READY-E2E`, que permanece `BLOCKED`;
-- no autoriza implementación productiva;
-- no autoriza regiones de medición;
-- no genera claves, tags ni vectores;
-- no modifica ADR-001;
-- permite preparar posteriormente una solicitud separada de aceptación
-  experimental;
-- solo después de esa aceptación podrán autorizarse vectores HMAC candidatos.
+ADR-002 v0.3.0 sustituye ese estado pendiente mediante la resolución aprobada
+registrada posteriormente. Los permisos derivados, límites y bloqueos vigentes
+se encuentran exclusivamente en `## Consecuencias de la decisión seleccionada`.
+
 
 ## Alternativas concretas para el alcance de clave
 
@@ -375,41 +405,251 @@ técnica de la candidata, no una decisión del investigador.
 - convertir este ADR en un diseño de gestión de secretos productivo fuera de PT2;
 - incluir rotación sin definir selección de claves históricas y sus fallos.
 
-## Recomendación técnica no vinculante
+## Recomendación técnica no vinculante considerada
 
-La política `ADR002-KEY-POLICY-CANDIDATE-v1` concreta la alternativa por
-ledger con clave opaca de 32 octetos, `key_id` opaco de 16 octetos, resolución
-conjunta y provisión previa en memoria. Se recomienda someterla posteriormente
-a una solicitud separada de aceptación experimental.
+La recomendación de ADR-002 v0.2.0 propuso una clave por ledger, material opaco
+de 32 octetos, `key_id` opaco de 16 octetos, resolución conjunta de
+`ledger_id` y `key_id`, y provisión previa en memoria.
 
-La recomendación permanece no vinculante: no registra aprobación científica,
-no elimina bloqueos y no convierte la política en especificación normativa.
+La recomendación fue considerada y modificada por el investigador. La decisión
+vigente no se limita a seleccionar el alcance por ledger: también congela la
+creación de una nueva relación para cada nueva unidad experimental y la
+continuidad de esa relación durante todo el ciclo de vida del artefacto.
+
+## Resolución aprobada
+
+### Alcance seleccionado
+
+Se selecciona la alternativa B como alcance normativo: cada instancia lógica de
+ledger posee una clave HMAC independiente. Ninguna clave puede proteger dos
+`ledger_id` distintos.
+
+Para los tratamientos que instancien `MEC-A1`, la unidad experimental se
+define mediante una combinación concreta de tratamiento, escenario y
+repetición. Cada nueva unidad experimental de `MEC-A1` crea:
+
+- una instancia lógica y de almacenamiento independiente de ledger;
+- un nuevo `ledger_id`;
+- un nuevo `key_id`;
+- una nueva clave HMAC aleatoria de 32 octetos;
+- una nueva asociación `(ledger_id, key_id) -> key_bytes`.
+
+Dos unidades experimentales distintas de `MEC-A1` no comparten una clave,
+aunque utilicen el mismo dataset lógico. Los tratamientos que no utilizan HMAC
+no reciben material de clave por efecto de este ADR.
+
+### Continuidad durante el ciclo de vida
+
+La asociación permanece invariable durante todas las fases autorizadas de la
+misma unidad experimental:
+
+1. creación y preparación del ledger;
+2. inserción de registros;
+3. cierre del proceso legítimo;
+4. manipulación o ataque offline autorizado;
+5. reapertura del mismo artefacto;
+6. verificación y eventual reverificación;
+7. cierre definitivo de la unidad experimental.
+
+Cerrar o reiniciar la aplicación, cambiar de fase o reabrir el mismo archivo no
+crea una nueva unidad y no genera una clave nueva.
+
+Una nueva unidad experimental no se crea reasignando un `ledger_id`, un
+`key_id` o una clave a una copia ya autenticada. Debe instanciarse desde el
+dataset lógico autorizado, con nueva identidad y nueva asociación, y sus tags
+deben calcularse bajo esa identidad desde el inicio.
+
+Una copia utilizada únicamente como artefacto atacado dentro del ciclo de la
+misma unidad conserva el `ledger_id`, el `key_id` y la clave esperados para que
+pueda evaluarse la verificación.
+
+### Aislamiento experimental
+
+La política exige aislamiento criptográfico y operativo entre unidades. Un
+fallo de configuración, provisión o resolución en una unidad no debe modificar
+la asociación ni el estado de las demás.
+
+El uso de claves distintas evita una causa secreta compartida, pero no demuestra
+por sí solo independencia estadística. La aleatorización, el orden de ejecución,
+la limpieza de estado, las cachés, el hardware y demás controles pertenecen al
+plan experimental.
+
+### Material e identificación
+
+- algoritmo: HMAC-SHA-256;
+- clave: exactamente 32 octetos opacos generados por una fuente
+  criptográficamente segura;
+- `key_id`: exactamente 16 octetos opacos y no secretos;
+- el `key_id` no deriva de la clave y no la sustituye;
+- la relación autorizada se resuelve mediante
+  `(ledger_id, key_id) -> key_bytes`;
+- una colisión de `key_id` dentro de la campaña invalida la preparación de la
+  unidad.
+
+### Provisión y continuidad autorizada
+
+Protector y verificador deben poder obtener la misma asociación durante todo el
+ciclo de vida mediante un proveedor autorizado fuera de la capacidad de
+`THR-P1`.
+
+La clave activa y cualquier material que permita reconstruirla pueden
+existir en memoria de procesos legítimos autorizados, pero no pueden aparecer
+en:
+
+- SQLite;
+- WAL;
+- SHM;
+- manifests;
+- resultados;
+- evidencia;
+- logs.
+
+Tampoco pueden registrarse, incorporarse a la evidencia ni almacenarse dentro
+del dominio local restaurable:
+
+- passphrases o secretos de desbloqueo;
+- semillas recuperables;
+- secretos maestros;
+- material derivador equivalente.
+
+Este requisito de continuidad no selecciona todavía un keystore, contenedor,
+servicio, archivo, API Java ni mecanismo productivo de persistencia.
+
+### Medición
+
+La generación, derivación, desbloqueo, lectura y carga de claves se realizan
+antes de `append-hot` y `verify-hot`. La política de provisión no se incluye
+silenciosamente en una métrica que presuponga la clave precargada.
+
+### Fallos
+
+La precedencia aprobada es:
+
+1. material o configuración inválidos impiden iniciar la unidad;
+2. una pareja `(ledger_id, key_id)` ausente produce exclusivamente
+   `UNKNOWN_KEY`;
+3. esto incluye un `key_id` conocido para otro ledger;
+4. `INVALID_TAG` solo puede producirse después de resolver una clave válida de
+   32 octetos;
+5. un tag válido puede continuar a la evaluación del contexto secuencial cuando
+   ADR-001 lo defina.
+
+### Rotación
+
+La rotación queda fuera del alcance de ADR-002 v0.3.0. Cada instancia de ledger
+utiliza una sola asociación durante su ciclo de vida experimental. No se
+aprueban épocas, claves históricas, migración o selección de claves antiguas.
+
+### Reproducibilidad y vectores
+
+La reproducibilidad experimental se basa en el procedimiento, versiones y
+metadatos no secretos, no en publicar las claves experimentales.
+
+Los futuros vectores de conformidad podrán utilizar una clave fija pública
+marcada `TEST KEY — NOT SECRET — NOT FOR EXPERIMENTAL RUNS`. Esa clave no podrá
+usarse en corridas experimentales.
+
+## Estado decidido de las alternativas
+
+| Alternativa | Estado decidido | Papel |
+|---|---|---|
+| A — clave global | `REJECTED` | Comparte una causa secreta entre todas las unidades y amplía el impacto de fallos o exposición. |
+| B — clave por ledger | `SELECTED_SCOPE` | Define el objeto lógico propietario de la clave. |
+| C — clave por dataset | `REJECTED` | Puede compartir una clave entre tratamientos, escenarios o repeticiones que usan el mismo dataset. |
+| D — clave por ejecución | `SELECTED_INSTANTIATION_RULE` | Se acepta únicamente para unidades de `MEC-A1` y cuando “ejecución” significa la unidad experimental completa que crea una nueva instancia de ledger; no significa apertura, proceso o fase. |
+
+Los valores de la tabla describen exclusivamente el papel decidido dentro de
+ADR-002 y no crean nuevos estados documentales generales.
+
 
 ## Decisión del investigador
 
-PENDING
+Se aprueba ADR-002 versión 0.3.0 con la resolución registrada en este
+expediente.
+
+La decisión selecciona una clave HMAC independiente por instancia lógica de
+ledger y una nueva asociación para cada nueva unidad experimental que instancie
+`MEC-A1`. La relación permanece estable durante cierre, ataque offline,
+reapertura, verificación y reverificación del mismo artefacto.
+
+La reapertura del mismo ledger no constituye una ejecución independiente y no
+genera una clave nueva. Una nueva combinación de tratamiento, escenario y
+repetición que instancie `MEC-A1` sí constituye una unidad nueva y recibe nuevo
+`ledger_id`, nuevo `key_id` y nueva clave.
+
+Decidido por: Alan Espinoza
+
+Fecha de aprobación: 2026-08-02
 
 ## Consecuencias de la decisión seleccionada
 
-PENDING
+### Consecuencias positivas
 
-## Estado y dependencias mientras la decisión permanece pendiente
+- aislamiento de material secreto entre unidades experimentales;
+- correspondencia inequívoca entre ledger, identificador y clave;
+- continuidad verificable durante todo el ciclo de vida del artefacto;
+- separación entre datos lógicos compartidos y fronteras secretas independientes;
+- clasificación consistente de fallos de configuración, `UNKNOWN_KEY` e
+  `INVALID_TAG`;
+- compatibilidad con la exclusión de claves activas establecida por `THR-P1`;
+- exclusión de generación y carga de las regiones que presuponen clave lista;
+- reproducibilidad del procedimiento sin publicar secretos experimentales.
 
-- ADR-002 continúa `DRAFT`;
-- `MEC-A1` permanece `BLOCKED`;
-- `MET-APPEND-READY-E2E` permanece `BLOCKED`;
-- no existe implementación autorizada;
-- los vectores de codificación sin HMAC pueden seguir tratándose en tareas
-  independientes;
-- los vectores con HMAC, `key_id` o contexto autenticado permanecen bloqueados
-  hasta una aceptación experimental separada;
-- una futura aceptación experimental no equivale a aprobación normativa.
+### Limitaciones
+
+- la política no garantiza por sí sola independencia estadística;
+- no protege frente al compromiso del proceso legítimo;
+- no cubre core dumps, swap, depuración privilegiada o lectura de memoria;
+- no define almacenamiento productivo, zeroization garantizada ni recuperación
+  comercial de secretos;
+- no ofrece confidencialidad;
+- no proporciona seguridad después del compromiso de la clave;
+- no detecta por sí sola rollback completo;
+- no aprueba rotación;
+- no congela todavía una API, schema, formato de almacenamiento o proveedor.
+
+### Trabajo derivado autorizado
+
+Esta decisión autoriza preparar, en tareas posteriores y separadas:
+
+- una especificación derivada del proveedor experimental de claves;
+- reglas de ciclo de vida y reprovisión del harness;
+- casos de prueba para aislamiento, asociación cruzada y continuidad;
+- armonización de `docs/06-mechanism-specifications.md`;
+- armonización de `docs/13-harness-architecture.md`;
+- armonización de `docs/16-traceability-matrix.csv`;
+- un plan de vectores HMAC después de resolver la codificación autenticada de
+  ADR-001.
+
+Cada tarea requiere su propio alcance, manifest, revisión y autorización. Esta
+aprobación no autoriza modificar esos documentos dentro de este cambio.
+
+### Dependencias resueltas y bloqueos vigentes
+
+La dependencia científica de política de claves representada por ADR-002 queda
+resuelta.
+
+No obstante:
+
+- `MEC-A1` permanece `BLOCKED` porque ADR-001 continúa `DRAFT` y todavía no
+  existe una tarea de implementación autorizada;
+- los vectores HMAC completos permanecen bloqueados hasta aprobar ADR-001;
+- `MET-APPEND-READY-E2E` permanece `BLOCKED` por ADR-003;
+- no se autorizan corridas experimentales oficiales;
+- no se autorizan resultados de seguridad o rendimiento;
+- no se generan claves, tags o vectores en esta tarea;
+- la fusión del cambio documental no constituye implementación.
+
+
 
 ## Documentos afectados
 
 - `docs/04-threat-model.md`
 - `docs/06-mechanism-specifications.md`
 - `docs/11-measurement-contract.md`
+- `docs/13-harness-architecture.md`
+- `docs/16-traceability-matrix.csv`
+- `docs/decisions/README.md`
 - futuros planes experimentales y esquemas de evidencia, cuando sean autorizados
 
 ## Identificadores de trazabilidad
