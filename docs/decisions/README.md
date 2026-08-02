@@ -61,6 +61,6 @@ implementación.
 |---|---|---|---|---|
 | `ADR-000` | Decision template | `0.1.0` | `DRAFT` | `docs/decisions/ADR-000-template.md` |
 | `ADR-001` | Authenticated encoding v1 | `0.4.0` | `DRAFT` | `docs/decisions/ADR-001-authenticated-encoding-v1.md` |
-| `ADR-002` | Key scope and provisioning | `0.1.0` | `DRAFT` | `docs/decisions/ADR-002-key-scope-and-provisioning.md` |
+| `ADR-002` | Key scope and provisioning | `0.2.0` | `DRAFT` | `docs/decisions/ADR-002-key-scope-and-provisioning.md` |
 | `ADR-003` | Append measurement boundary | `0.2.0` | `DRAFT` | `docs/decisions/ADR-003-append-measurement-boundary.md` |
 | `ADR-004` | External Anchor and Checkpoint Externalization Boundary | `0.2.1` | `APPROVED` | `docs/decisions/ADR-004-external-anchor-boundary.md` |
