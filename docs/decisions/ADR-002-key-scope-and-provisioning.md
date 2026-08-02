@@ -40,11 +40,12 @@ Fecha de aprobación: 2026-08-02
 
 ## Contexto
 
-`MEC-A1` requiere una clave HMAC, pero todavía no están definidos su alcance,
-identificación, provisión ni política de rotación. `THR-P1` puede leer y
-restaurar el dominio local, pero no puede obtener claves activas ni secretos de
-desbloqueo. El diseño experimental debe instanciar esa frontera sin construir
-una infraestructura productiva de gestión de secretos.
+`MEC-A1` requiere una clave HMAC. ADR-002 v0.3.0 define el alcance por
+instancia lógica de ledger, la identificación mediante `key_id`, las reglas de
+provisión y continuidad, y mantiene la rotación fuera de alcance. `THR-P1`
+puede leer y restaurar el dominio local, pero no puede obtener claves activas ni
+secretos de desbloqueo. El diseño experimental debe instanciar esa frontera sin
+construir una infraestructura productiva de gestión de secretos.
 
 Las claves deben estar disponibles antes de cualquier región `append-hot` o
 `verify-hot` que las declare precargadas. Este ADR registra la política
