@@ -1,9 +1,9 @@
 ---
 decision_id: ADR-004
 title: External Anchor and Checkpoint Externalization Boundary
-version: 0.2.1
+version: 0.2.2
 status: APPROVED
-date: 2026-07-30
+date: 2026-08-02
 decided_by: Alan Espinoza
 ---
 
@@ -30,17 +30,24 @@ en tareas posteriores y separadas conforme a `docs/01-change-control.md`.
   documental.
 - v0.2.1 restaura la recomendación técnica no vinculante exigida por la
   convención de ADR.
-- v0.2.1 sustituye documentalmente a v0.2.0 como versión vigente.
-- v0.2.1 no modifica la resolución científica, los papeles de A–F, el alcance
-  experimental, `THR-P1`, la verificación independiente, la ausencia de recibo
-  importado por el POS, los bloqueos existentes ni los protocolos, amenazas,
-  ataques o métricas pendientes.
+- ADR-004 v0.2.2 fue autorizada el `2026-08-02` como sincronización
+  exclusivamente documental con ADR-002 v0.3.0.
+- v0.2.2 sustituye documentalmente a v0.2.1 como versión vigente.
+- v0.2.2 no modifica la resolución científica, los papeles de A–F, el alcance
+  experimental, `THR-P1`, la verificación independiente ni la ausencia de
+  recibo importado por el POS.
+- v0.2.2 conserva los bloqueos dependientes de ADR-001, ADR-003, protocolos,
+  amenazas, ataques, métricas y autorización de implementación.
 
 > Apruebo ADR-004 versión 0.2.1 como revisión documental de la versión 0.2.0. La restauración de la recomendación técnica no vinculante no modifica la resolución científica aprobada, los papeles de las alternativas A–F ni el alcance experimental. ADR-004 v0.2.1 pasa a ser la versión vigente aprobada y sustituye documentalmente a v0.2.0.
 
 Decidido por: Alan Espinoza
 
 Fecha de aprobación de v0.2.1: 2026-07-30
+
+Sincronización documental v0.2.2 autorizada por: Alan Espinoza
+
+Fecha de sincronización de v0.2.2: 2026-08-02
 
 ## Contexto
 
@@ -776,11 +783,15 @@ filas expresamente autorizadas de la matriz de trazabilidad.
 resuelve por sí sola:
 
 - ADR-001;
-- ADR-002;
 - ADR-003;
 - la codificación autenticada;
-- la provisión de claves;
+- la ausencia de una tarea de implementación autorizada para `MEC-A1`;
 - la frontera temporal de medición.
+
+ADR-002 v0.3.0 resuelve separadamente la política científica de claves. Retirar
+ADR-002 y la provisión de claves de esta lista no desbloquea `MEC-A1`, porque
+ADR-001 continúa `DRAFT` y todavía no existe una tarea de implementación
+autorizada. `MET-APPEND-READY-E2E` permanece bloqueada por ADR-003.
 
 La decisión tampoco congela `RQ-03` o `RQ-04` ni permite implementar ataques,
 protocolos o mecanismos nuevos.
