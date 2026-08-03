@@ -1,7 +1,7 @@
 ---
 document_id: PT2-DOC-06
 title: Mechanism Specifications
-version: 0.2.1
+version: 0.2.2
 status: PROVISIONAL
 approved_by: PENDING
 ---
@@ -18,10 +18,10 @@ PROVISIONAL
 
 `BLOCKED`
 
-La implementación queda bloqueada hasta resolver y aprobar:
+La implementación permanece bloqueada por:
 
 - `ADR-001`: codificación autenticada y semántica de secuencia;
-- `ADR-002`: alcance, identificación y provisión de claves.
+- ausencia de una tarea de implementación autorizada.
 
 ### Primitiva
 
@@ -80,12 +80,19 @@ Autenticidad individual del mensaje autenticado frente a un adversario que no po
 
 ### Gestión de claves
 
-Estado de implementación: `BLOCKED` por `ADR-002`.
+Estado de política científica: `APPROVED` por `ADR-002` v0.3.0.
 
-Deben definirse como mínimo:
+La implementación de esta política permanece pendiente de una tarea autorizada.
 
-- alcance de cada clave;
-- identificación mediante `key_id`;
-- provisión al mecanismo;
-- provisión al verificador;
-- exclusión o inclusión de rotación.
+ADR-002 v0.3.0 establece:
+
+- una clave HMAC independiente por instancia lógica de ledger;
+- una asociación nueva por cada unidad experimental completa de `MEC-A1`;
+- clave opaca de 32 octetos;
+- `key_id` opaco y no secreto de 16 octetos;
+- provisión y continuidad exclusivamente en memoria autorizada, sin
+  persistencia;
+- rotación fuera de alcance.
+
+La topología o API del proveedor, el schema y la implementación concreta no
+quedan definidos por esta especificación provisional.
