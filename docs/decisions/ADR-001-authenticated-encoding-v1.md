@@ -1,7 +1,7 @@
 ---
 decision_id: ADR-001
 title: Authenticated encoding v1
-version: 0.4.0
+version: 0.4.1
 status: DRAFT
 date: 2026-07-31
 decided_by: Alan Espinoza
@@ -1164,6 +1164,11 @@ autorizadas:
 La aceptación no cambia ADR-001 a `APPROVED`, no convierte el candidato en
 contrato estable y puede revisarse según la evidencia experimental obtenida.
 
+ADR-001 v0.4.1 sincroniza únicamente el estado de la dependencia ADR-002 con
+la decisión expresa registrada en ADR-002 v0.3.0. Esta actualización no cambia
+la decisión científica de ADR-001, no aprueba su perfil candidato, no autoriza
+implementación y no desbloquea `MEC-A1`.
+
 ## Consecuencias de la decisión seleccionada
 
 La dependencia científica previa para proponer experimentación con el único
@@ -1174,14 +1179,15 @@ una tarea independiente y expresamente autorizada.
 - `PT2-CBOR-AUTH-RECORD-CANDIDATE-v1` queda aceptado únicamente para
   experimentación controlada y no normativa.
 - MEC-A1 continúa `BLOCKED`.
-- ADR-002 continúa pendiente.
+- ADR-002 v0.3.0 queda `APPROVED`; esta sincronización no aprueba ADR-001
+  ni desbloquea `MEC-A1`.
 - ADR-001 puede congelar una representación autenticada sin congelar todavía
   todas las reglas de negocio; `schema_version` mantiene autenticada la
   selección del schema.
 - La implementación productiva continúa bloqueada porque ADR-001 sigue `DRAFT`,
-  ADR-002 sigue pendiente, todavía no existen bytes y vectores candidatos
-  validados y falta una definición verificable del schema de aplicación para la
-  aceptación final.
+  todavía no existen bytes y vectores candidatos validados, falta una tarea de
+  implementación autorizada y falta una definición verificable del schema de
+  aplicación para la aceptación final.
 - No existen bytes autenticados normativos.
 - No existe schema normativo.
 - No se autoriza integración productiva.
